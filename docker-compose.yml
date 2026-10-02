@@ -1,0 +1,25 @@
+services:
+  llmetrix:
+    image: python:3.13-slim
+    container_name: llmetrix
+    restart: unless-stopped
+    ports:
+      - "8790:8790"
+    volumes:
+      - ./server.py:/app/server.py:ro
+      - ./web:/app/web:ro
+      - ./data:/data
+    environment:
+      - LM_PORT=8790
+      - LMPROM_URL=http://192.168.178.22:9090
+      - LM_OLLAMA_GPU0=https://rtx-gpu0.obsy.icu
+      - LM_OLLAMA_GPU1=https://rtx-gpu1.obsy.icu
+      - LM_OLLAMA_DUAL=https://rtx-dual.obsy.icu
+      - LM_HIST_FILE=/data/history.json
+    command: ["python3", "-u", "/app/server.py"]
+    networks:
+      - proxy
+
+networks:
+  proxy:
+    external: true

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LLMetrix // Asymmetric Neural Matrix</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <style>
+    body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+    .scanline {
+      background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35));
+      background-size: 100% 4px;
+    }
+    .cyber-card {
+      background: rgba(8, 14, 28, 0.85); backdrop-filter: blur(12px); border: 1px solid #00f0ff;
+      box-shadow: 0 0 20px rgba(0, 240, 255, 0.2), inset 0 0 15px rgba(0, 240, 255, 0.1);
+    }
+    .cyber-card-emerald {
+      background: rgba(8, 28, 18, 0.85); backdrop-filter: blur(12px); border: 1px solid #10b981;
+      box-shadow: 0 0 20px rgba(16, 185, 129, 0.2), inset 0 0 15px rgba(16, 185, 129, 0.1);
+    }
+    .cyber-card-amber {
+      background: rgba(24, 18, 6, 0.85); backdrop-filter: blur(12px); border: 1px solid #f59e0b;
+      box-shadow: 0 0 20px rgba(245, 158, 11, 0.15), inset 0 0 15px rgba(245, 158, 11, 0.08);
+    }
+    .glow-cyan { text-shadow: 0 0 12px #00f0ff; }
+    .glow-emerald { text-shadow: 0 0 12px #10b981; }
+    .glow-amber { text-shadow: 0 0 12px #f59e0b; }
+    .bar-track { background: rgba(2, 6, 23, 0.9); border: 1px solid rgba(148,163,184,0.2); }
+    @keyframes pulse-slow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
+  </style>
+</head>
+<body class="h-screen w-screen relative scanline flex flex-col justify-between p-6 select-none">
+
+  <div id="canvas-container" class="absolute inset-0 z-0"></div>
+
+  <!-- Header HUD -->
+  <header class="relative z-10 flex justify-between items-center border-b border-cyan-500/30 pb-4 bg-slate-950/80 p-4 rounded-b-lg">
+    <div>
+      <h1 class="text-2xl font-black tracking-widest text-cyan-400 glow-cyan">LLMETRIX // ASYMMETRIC NEURAL MATRIX</h1>
+      <p class="text-xs text-slate-400 mt-1">
+        AI SERVER 192.168.178.40 &mdash; DUAL RTX 5060 Ti &mdash; LIVE TELEMETRY VIA NAP GATEWAY
+      </p>
+    </div>
+    <div class="flex items-center space-x-3 bg-slate-900/90 p-2 border border-slate-800 rounded">
+      <span id="link-state" class="text-[10px] text-slate-500 px-1">LINK: --</span>
+      <span class="text-xs text-slate-400">BENCHMARK:</span>
+      <button id="bench-gpu0" onclick="runBenchmark('gpu0')" class="px-2.5 py-1 bg-cyan-950 text-xs text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900 disabled:opacity-40">GPU 0</button>
+      <button id="bench-gpu1" onclick="runBenchmark('gpu1')" class="px-2.5 py-1 bg-emerald-950 text-xs text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900 disabled:opacity-40">GPU 1</button>
+      <button id="bench-dual" onclick="runBenchmark('dual')" class="px-2.5 py-1 bg-amber-950 text-xs text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900 disabled:opacity-40">DUAL</button>
+    </div>
+  </header>
+
+  <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 -->
+  <div class="relative z-10 grid grid-cols-12 gap-6 my-auto pointer-events-none items-stretch">
+
+    <!-- LEFT CORTEX // GPU 0 -->
+    <div class="col-span-3 cyber-card p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+      <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
+        <span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span>
+        <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400">GPU LOAD</div>
+        <div class="text-3xl font-black text-cyan-300 glow-cyan" id="gpu0-load">-- %</div>
+        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu0-load-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400">VRAM</div>
+        <div class="text-sm font-bold text-cyan-200" id="gpu0-vram">-- / -- GB</div>
+        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu0-vram-bar" class="h-full bg-cyan-600 rounded transition-all duration-500" style="width:0%"></div></div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-center pt-1">
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
+          <div class="text-[9px] text-slate-400">TEMP</div>
+          <div class="text-base font-bold text-cyan-400"><span id="gpu0-temp">--</span>&deg;C</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
+          <div class="text-[9px] text-slate-400">POWER</div>
+          <div class="text-base font-bold text-cyan-300"><span id="gpu0-power">--</span> W</div>
+        </div>
+      </div>
+      <div class="mt-auto text-xs text-slate-400 border-t border-cyan-500/20 pt-2">SYNAPSE: <span id="gpu0-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+    </div>
+
+    <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
+    <div class="col-span-6 cyber-card-amber p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+      <div class="flex justify-between items-center border-b border-amber-500/30 pb-2">
+        <span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span>
+        <span class="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-500/50" id="core-source">--</span>
+      </div>
+      <div class="flex items-end justify-between gap-4">
+        <div class="min-w-0">
+          <div class="text-[10px] text-slate-400">MODEL</div>
+          <div class="text-xl font-black text-amber-200 truncate" id="core-model">KEIN MODELL GELADEN</div>
+          <div class="text-xs text-slate-400 mt-1">
+            <span id="core-params">--</span> &middot; <span id="core-quant">--</span> &middot; CTX <span id="core-ctx">--</span>
+          </div>
+        </div>
+        <div class="text-right shrink-0">
+          <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
+          <div class="text-2xl font-black text-amber-300 glow-amber" id="core-vram">-- GB</div>
+        </div>
+      </div>
+
+      <!-- Sparklines -->
+      <div class="grid grid-cols-2 gap-3">
+        <div class="bg-slate-900/90 p-2 rounded border border-amber-500/20">
+          <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>GENERATION tk/s</span><span id="spark-gen-now" class="text-amber-300 font-bold">--</span></div>
+          <canvas id="spark-gen" width="420" height="56" class="w-full h-14"></canvas>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-amber-500/20">
+          <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>PROMPT EVAL tk/s</span><span id="spark-prompt-now" class="text-cyan-300 font-bold">--</span></div>
+          <canvas id="spark-prompt" width="420" height="56" class="w-full h-14"></canvas>
+        </div>
+      </div>
+
+      <!-- letzte Benchmark -->
+      <div class="text-[11px] text-slate-400 border-t border-amber-500/20 pt-2">
+        LAST BENCHMARK: <span id="last-bench" class="text-amber-300 font-bold">noch keine Messung</span>
+      </div>
+    </div>
+
+    <!-- RIGHT CORTEX // GPU 1 -->
+    <div class="col-span-3 cyber-card-emerald p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+      <div class="flex justify-between items-center border-b border-emerald-500/30 pb-2">
+        <span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span>
+        <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400">GPU LOAD</div>
+        <div class="text-3xl font-black text-emerald-300 glow-emerald" id="gpu1-load">-- %</div>
+        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu1-load-bar" class="h-full bg-emerald-400 rounded transition-all duration-500" style="width:0%"></div></div>
+      </div>
+      <div>
+        <div class="text-[10px] text-slate-400">VRAM</div>
+        <div class="text-sm font-bold text-emerald-200" id="gpu1-vram">-- / -- GB</div>
+        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu1-vram-bar" class="h-full bg-emerald-600 rounded transition-all duration-500" style="width:0%"></div></div>
+      </div>
+      <div class="grid grid-cols-2 gap-2 text-center pt-1">
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
+          <div class="text-[9px] text-slate-400">TEMP</div>
+          <div class="text-base font-bold text-emerald-400"><span id="gpu1-temp">--</span>&deg;C</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
+          <div class="text-[9px] text-slate-400">POWER</div>
+          <div class="text-base font-bold text-emerald-300"><span id="gpu1-power">--</span> W</div>
+        </div>
+      </div>
+      <div class="mt-auto text-xs text-slate-400 border-t border-emerald-500/20 pt-2">SYNAPSE: <span id="gpu1-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+    </div>
+  </div>
+
+  <footer class="relative z-10 bg-slate-950/90 p-4 rounded-t-lg border-t border-cyan-500/30 text-xs text-slate-400 font-mono">
+    STATUS: <span id="live-log" class="text-cyan-400 pulse-slow">LLMetrix initialisiert. Warte auf erstes Telemetrie-Paket vom AI Server...</span>
+  </footer>
+
+  <script>
+    // ── 1. Three.js Scene (unverändert, bewährt) ─────────────────────────
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x020610, 0.018);
+
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(12, 4, 18);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.04;
+    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
+
+    function buildAsymmetricHemisphere(isLeft) {
+      const geo = new THREE.SphereGeometry(5, 48, 48);
+      const pos = geo.attributes.position;
+      const dir = isLeft ? -1 : 1;
+      for (let i = 0; i < pos.count; i++) {
+        let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
+        z *= 1.45; y *= 0.85; x *= 0.65; x += dir * 1.6;
+        if (z > -1.5 && z < 2.0 && y < 0.5) {
+          x += dir * Math.sin((z + 1.5) * 0.8) * 0.6;
+          y -= Math.cos(z * 0.5) * 0.5;
+        }
+        if (z < -2.0) { y *= 0.8; x *= 0.85; }
+        if (z < -0.5 && y < -1.0) { y += Math.abs(z) * 0.35; }
+        if (z > 2.0) { y *= 0.9; }
+        const gyri = Math.sin(x * 3.2) * Math.cos(y * 3.8) * Math.sin(z * 3.2) * 0.4;
+        const detailFolds = Math.cos(x * 6.5 + z * 6.5) * 0.12;
+        const totalNoise = gyri + detailFolds;
+        pos.setX(i, x + totalNoise * 0.25);
+        pos.setY(i, y + totalNoise * 0.25);
+        pos.setZ(i, z + totalNoise * 0.35);
+      }
+      geo.computeVertexNormals();
+      return geo;
+    }
+
+    const leftGeo = buildAsymmetricHemisphere(true);
+    const leftPointsMat = new THREE.PointsMaterial({ color: 0x00f0ff, size: 0.11, transparent: true, opacity: 0.85 });
+    const leftWireMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.0 });
+    const rightGeo = buildAsymmetricHemisphere(false);
+    const rightPointsMat = new THREE.PointsMaterial({ color: 0x10b981, size: 0.11, transparent: true, opacity: 0.85 });
+    const rightWireMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true, transparent: true, opacity: 0.0 });
+
+    const brainGroup = new THREE.Group();
+    brainGroup.add(new THREE.Points(leftGeo, leftPointsMat));
+    brainGroup.add(new THREE.Mesh(leftGeo, leftWireMat));
+    brainGroup.add(new THREE.Points(rightGeo, rightPointsMat));
+    brainGroup.add(new THREE.Mesh(rightGeo, rightWireMat));
+    scene.add(brainGroup);
+
+    // ── 2. State + sanfte Opacity-Lerp (statt rohem Random) ──────────────
+    let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
+    let targetOpacity = { left: 0, right: 0 };
+
+    function animate() {
+      requestAnimationFrame(animate);
+      brainGroup.rotation.y += 0.0006;
+      // Lerp + leichtes organisches Zittern nur bei aktiver Last
+      const jitter = (Math.random() - 0.5) * 0.08;
+      leftWireMat.opacity += ((targetOpacity.left + (targetOpacity.left > 0.1 ? jitter : 0)) - leftWireMat.opacity) * 0.08;
+      rightWireMat.opacity += ((targetOpacity.right + (targetOpacity.right > 0.1 ? jitter : 0)) - rightWireMat.opacity) * 0.08;
+      controls.update();
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    // ── 3. UI-Helper ──────────────────────────────────────────────────────
+    const $ = id => document.getElementById(id);
+    const gb = mib => (mib / 1024).toFixed(1);
+    function log(msg, cls) { const el = $('live-log'); el.innerText = msg; el.className = cls || 'text-cyan-400'; }
+
+    function setGpuCard(slot, g) {
+      // slot: 'gpu0' | 'gpu1', g: {load, vram_used_mib, vram_total_mib, temp_c, power_w}
+      const load = Math.round(g.load || 0);
+      $(slot + '-load').innerText = load + ' %';
+      $(slot + '-load-bar').style.width = load + '%';
+      if (g.vram_total_mib) {
+        $(slot + '-vram').innerText = `${gb(g.vram_used_mib)} / ${gb(g.vram_total_mib)} GB`;
+        $(slot + '-vram-bar').style.width = Math.min(100, (g.vram_used_mib / g.vram_total_mib) * 100).toFixed(1) + '%';
+      }
+      if (g.temp_c != null) $(slot + '-temp').innerText = Math.round(g.temp_c);
+      if (g.power_w != null) $(slot + '-power').innerText = Math.round(g.power_w);
+      const st = $(slot + '-state');
+      if (load <= 5) { st.innerText = "NEURONS ONLY"; st.className = "text-slate-500 font-bold"; }
+      else if (load >= 95) { st.innerText = "SOLID SYNAPSES (100%)"; st.className = "text-amber-400 font-bold animate-pulse"; }
+      else { st.innerText = "SYNAPTIC FLICKER"; st.className = (slot === 'gpu0' ? "text-cyan-400" : "text-emerald-400") + " font-bold"; }
+    }
+
+    function setCore(source, model) {
+      $('core-source').innerText = source;
+      if (!model) {
+        $('core-model').innerText = 'KEIN MODELL GELADEN';
+        ['core-params','core-quant','core-ctx'].forEach(id => $(id).innerText = '--');
+        $('core-vram').innerText = '-- GB';
+        return;
+      }
+      $('core-model').innerText = model.name;
+      $('core-params').innerText = model.params || '--';
+      $('core-quant').innerText = model.quant || '--';
+      $('core-ctx').innerText = model.ctx ? model.ctx.toLocaleString('de-DE') : '--';
+      $('core-vram').innerText = (model.vram_gb || 0).toFixed(1) + ' GB';
+    }
+
+    // ── 4. Sparklines ─────────────────────────────────────────────────────
+    function drawSpark(canvasId, points, color) {
+      const c = $(canvasId), ctx = c.getContext('2d');
+      ctx.clearRect(0, 0, c.width, c.height);
+      if (!points || points.length < 2) {
+        ctx.strokeStyle = 'rgba(148,163,184,0.25)';
+        ctx.setLineDash([4, 6]);
+        ctx.beginPath(); ctx.moveTo(0, c.height / 2); ctx.lineTo(c.width, c.height / 2); ctx.stroke();
+        ctx.setLineDash([]);
+        return;
+      }
+      const max = Math.max(...points.map(p => p[1]), 10);
+      const stepX = c.width / (points.length - 1);
+      ctx.beginPath();
+      points.forEach((p, i) => {
+        const x = i * stepX, y = c.height - (p[1] / max) * (c.height - 6) - 2;
+        i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      });
+      ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.stroke();
+      // Fläche
+      ctx.lineTo(c.width, c.height); ctx.lineTo(0, c.height); ctx.closePath();
+      const grad = ctx.createLinearGradient(0, 0, 0, c.height);
+      grad.addColorStop(0, color.replace(')', ',0.25)').replace('rgb', 'rgba'));
+      grad.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = grad; ctx.fill();
+    }
+
+    async function refreshHistory() {
+      try {
+        const r = await fetch('/api/history');
+        const h = await r.json();
+        drawSpark('spark-gen', h.gen, 'rgb(251,191,36)');
+        drawSpark('spark-prompt', h.prompt, 'rgb(34,211,238)');
+        if (h.gen.length) $('spark-gen-now').innerText = h.gen[h.gen.length - 1][1].toFixed(1);
+        if (h.prompt.length) $('spark-prompt-now').innerText = h.prompt[h.prompt.length - 1][1].toFixed(1);
+      } catch (e) { /* Backend kurz weg — Sparkline bleibt */ }
+    }
+
+    // ── 5. Live-Metriken Polling ─────────────────────────────────────────
+    async function pollMetrics() {
+      try {
+        const r = await fetch('/api/metrics', { cache: 'no-store' });
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const m = await r.json();
+
+        $('link-state').innerText = 'LINK: ONLINE';
+        $('link-state').className = 'text-[10px] text-emerald-400 px-1 font-bold';
+
+        if (!m.ai_server_online) {
+          log('[OFFLINE]: AI Server (.40) nicht erreichbar — Wake-on-LAN via Nap-Gateway möglich.', 'text-red-400');
+          ['gpu0', 'gpu1'].forEach(s => { $(s + '-state').innerText = 'OFFLINE'; $(s + '-state').className = 'text-red-500 font-bold'; });
+          targetOpacity.left = targetOpacity.right = 0;
+          return;
+        }
+
+        const g0 = m.gpus && m.gpus['0'], g1 = m.gpus && m.gpus['1'];
+        if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); targetOpacity.left = g0.load >= 5 ? Math.min(0.9, 0.15 + g0.load / 100) : 0; }
+        if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); targetOpacity.right = g1.load >= 5 ? Math.min(0.9, 0.15 + g1.load / 100) : 0; }
+
+        // Aktives Modell: priorisiert dual (große Modelle), dann gpu0, gpu1
+        const o = m.ollama || {};
+        let source = null, model = null;
+        for (const k of ['dual', 'gpu0', 'gpu1']) {
+          if (o[k] && o[k].online && o[k].models && o[k].models.length) { source = k.toUpperCase(); model = o[k].models[0]; break; }
+        }
+        setCore(source || 'KEIN ENDPOINT AKTIV', model);
+
+        log(`[TELEMETRY]: GPU0 ${g0 ? Math.round(g0.load) : '--'}% / GPU1 ${g1 ? Math.round(g1.load) : '--'}% — Modell: ${model ? model.name : 'none'}`, 'text-cyan-400');
+      } catch (e) {
+        $('link-state').innerText = 'LINK: DOWN';
+        $('link-state').className = 'text-[10px] text-red-400 px-1 font-bold animate-pulse';
+        log('[LINK-LOSS]: Kein Telemetrie-Paket vom Backend. Versuche Reconnect...', 'text-red-400');
+      }
+    }
+
+    // ── 6. Benchmark (echte Inferenz) ─────────────────────────────────────
+    async function runBenchmark(target) {
+      const btns = ['bench-gpu0', 'bench-gpu1', 'bench-dual'];
+      btns.forEach(id => $(id).disabled = true);
+      log(`[BENCHMARK]: Echte Inferenz auf ${target.toUpperCase()} gestartet — messe Prompt-Eval + Generation...`, 'text-amber-400');
+      try {
+        const r = await fetch('/api/inference', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ target }),
+        });
+        const d = await r.json();
+        if (d.error) throw new Error(d.error);
+        $('last-bench').innerText = `${target.toUpperCase()} · ${d.model}${d.cold_start ? ' (cold)' : ''} · P ${(d.prompt_tps ?? '--')} tk/s · G ${(d.gen_tps ?? '--')} tk/s · ${d.wall_s}s`;
+        log(`[BENCHMARK OK]: ${target.toUpperCase()} — Prompt ${d.prompt_tokens} Tokens @ ${d.prompt_tps} tk/s, Generation ${d.gen_tokens} Tokens @ ${d.gen_tps} tk/s (${d.wall_s}s)`, 'text-emerald-400');
+        setTimeout(refreshHistory, 500);
+      } catch (e) {
+        log(`[BENCHMARK FAIL]: ${e.message}`, 'text-red-400');
+      } finally {
+        btns.forEach(id => $(id).disabled = false);
+      }
+    }
+
+    // ── 7. Start ──────────────────────────────────────────────────────────
+    pollMetrics();
+    refreshHistory();
+    setInterval(pollMetrics, 2000);
+    setInterval(refreshHistory, 5000);
+  </script>
+</body>
+</html>
