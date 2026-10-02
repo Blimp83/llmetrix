@@ -154,9 +154,23 @@
     </div>
   </div>
 
-  <footer class="relative z-10 bg-slate-950/90 p-4 rounded-t-lg border-t border-cyan-500/30 text-xs text-slate-400 font-mono">
-    STATUS: <span id="live-log" class="text-cyan-400 pulse-slow">LLMetrix initialisiert. Warte auf erstes Telemetrie-Paket vom AI Server...</span>
-  </footer>
+  <!-- Log Console + Status -->
+  <div class="relative z-10 bg-slate-950/90 p-4 rounded-t-lg border-t border-cyan-500/30 font-mono">
+    <div class="flex items-center justify-between mb-2">
+      <div class="flex items-center space-x-2">
+        <span class="text-[10px] text-slate-400 tracking-widest">OLLAMA LIVE-LOG</span>
+        <button onclick="switchLogTab('gpu0')" id="logtab-gpu0" class="px-2 py-0.5 text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900">GPU 0</button>
+        <button onclick="switchLogTab('gpu1')" id="logtab-gpu1" class="px-2 py-0.5 text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900">GPU 1</button>
+        <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900">DUAL</button>
+        <span id="log-model" class="text-[10px] text-slate-500 ml-2"></span>
+      </div>
+      <span id="log-status" class="text-[10px] text-slate-500">--</span>
+    </div>
+    <div id="log-view" class="h-36 overflow-y-auto bg-black/60 border border-slate-800 rounded p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all scrollbar-thin"></div>
+    <div class="mt-2 text-xs text-slate-400">
+      STATUS: <span id="live-log" class="text-cyan-400 pulse-slow">LLMetrix initialisiert. Warte auf erstes Telemetrie-Paket vom AI Server...</span>
+    </div>
+  </div>
 
   <script>
     // ── 1. Three.js Scene (unverändert, bewährt) ─────────────────────────
@@ -344,7 +358,81 @@
       }
     }
 
-    // ── 6. Benchmark (echte Inferenz) ─────────────────────────────────────
+    // ── 6. Ollama Live-Log (Loki) ────────────────────────────────────────
+    let logTab = 'dual';
+    const logColors = { gpu0: 'text-cyan-300', gpu1: 'text-emerald-300', dual: 'text-amber-300' };
+
+    function activeModelOf(entries) {
+      // neueste "load_model"-Zeile → Modellname
+      for (let i = entries.length - 1; i >= 0; i--) {
+        const m = entries[i].line.match(/load_model: model\.path="([^"]+)"/);
+        if (m) return m[1].split('/').pop();
+      }
+      return null;
+    }
+
+    function filterLogLines(entries) {
+      // raus: JSON-Body-Dumps, interne Ollama-Debugzeilen; rein: GIN-Requests + llama.cpp-Timings
+      const keep = [];
+      for (const e of entries) {
+        const l = e.line;
+        if (/^\s*"/.test(l)) continue;                              // request/response Body-Dump
+        if (/^(time=|GIN-debug|http:|Using)/.test(l)) continue;     // Ollama-Internal / Boot
+        if (l.length > 400) continue;                               // zu lang = Dump
+        keep.push(e);
+      }
+      return keep.slice(-80);
+    }
+
+    function renderLog(entries, gpu) {
+      const view = $('log-view');
+      const shown = filterLogLines(entries);
+      if (!shown.length) {
+        view.innerHTML = '<span class="text-slate-600">[IDLE] Keine Inferenz-Aktivität in den letzten 60 min.</span>';
+        return;
+      }
+      const model = activeModelOf(entries);
+      $('log-model').innerText = model ? 'MOD: ' + model : '';
+      view.innerHTML = shown.map(e => {
+        const t = new Date(e.ts * 1000).toLocaleTimeString('de-DE', { hour12: false });
+        let cls = logColors[gpu] || 'text-slate-300';
+        if (/print_timing|t\/s/.test(e.line)) cls = 'text-emerald-400';
+        else if (/\| 200 \|/.test(e.line) && /generate/.test(e.line)) cls = 'text-amber-300';
+        return `<div class="${cls}"><span class="text-slate-600">${t}</span> ${escapeHtml(e.line)}</div>`;
+      }).join('');
+      view.scrollTop = view.scrollHeight;                           // auto-scroll nach unten
+    }
+
+    function escapeHtml(s) {
+      return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    }
+
+    function setLogTabStyle() {
+      const base = 'px-2 py-0.5 text-[10px] border rounded ';
+      $('logtab-gpu0').className = base + (logTab === 'gpu0' ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400' : 'bg-cyan-950 text-cyan-300 border-cyan-500/50 hover:bg-cyan-900');
+      $('logtab-gpu1').className = base + (logTab === 'gpu1' ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400' : 'bg-emerald-950 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900');
+      $('logtab-dual').className = base + (logTab === 'dual' ? 'bg-amber-500/30 text-amber-200 border-amber-400' : 'bg-amber-950 text-amber-300 border-amber-500/50 hover:bg-amber-900');
+    }
+
+    function switchLogTab(gpu) {
+      logTab = gpu;
+      setLogTabStyle();
+      refreshLogs();
+    }
+
+    async function refreshLogs() {
+      try {
+        const r = await fetch(`/api/logs?gpu=${logTab}&limit=150`, { cache: 'no-store' });
+        const d = await r.json();
+        if (d.error) { $('log-status').innerText = 'LOKI: ' + d.error; return; }
+        renderLog(d.entries || [], logTab);
+        $('log-status').innerText = `${(d.entries || []).length} Zeilen · ${new Date().toLocaleTimeString('de-DE', { hour12: false })}`;
+      } catch (e) {
+        $('log-status').innerText = 'LOKI: nicht erreichbar';
+      }
+    }
+
+    // ── 7. Benchmark (echte Inferenz) ─────────────────────────────────────
     async function runBenchmark(target) {
       const btns = ['bench-gpu0', 'bench-gpu1', 'bench-dual'];
       btns.forEach(id => $(id).disabled = true);
@@ -367,11 +455,14 @@
       }
     }
 
-    // ── 7. Start ──────────────────────────────────────────────────────────
+    // ── 8. Start ──────────────────────────────────────────────────────────
     pollMetrics();
     refreshHistory();
+    setLogTabStyle();
+    refreshLogs();
     setInterval(pollMetrics, 2000);
     setInterval(refreshHistory, 5000);
+    setInterval(refreshLogs, 4000);
   </script>
 </body>
 </html>

@@ -23,6 +23,7 @@ OLLAMA_EP = {
     "dual": os.environ.get("LM_OLLAMA_DUAL", "https://rtx-dual.obsy.icu"),
 }
 TIMEOUT = float(os.environ.get("LM_TIMEOUT", "6"))
+LOKI_URL = os.environ.get("LM_LOKI_URL", "http://localhost:3100")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
 # ── History (in-memory, optional persist) ────────────────────────────────
@@ -133,6 +134,34 @@ def build_metrics():
     }
 
 
+# ── Loki (Ollama-Docker-Logs) ─────────────────────────────────────────────
+def loki_query_range(query, limit=150):
+    now = int(time.time() * 1e9)
+    params = urllib.parse.urlencode({
+        "query": query,
+        "start": str(now - 3_600_000_000_000),   # letzte Stunde (ganzzahlige ns!)
+        "end": str(now),
+        "limit": str(limit),
+    })
+    url = f"{LOKI_URL}/loki/api/v1/query_range?{params}"
+    with urllib.request.urlopen(url, timeout=TIMEOUT) as r:
+        return json.load(r)["data"]["result"]
+
+
+def get_logs(gpu, limit=80):
+    """Neueste Logs eines Ollama-Containers (gpu: gpu0|gpu1|dual) aus Loki."""
+    try:
+        series = loki_query_range(f'{{job="ollama",gpu="{gpu}"}}', limit=limit)
+        entries = []
+        for s in series:
+            for ts_ns, line in s.get("values", []):
+                entries.append({"ts": int(ts_ns) / 1e9, "line": line})
+        entries.sort(key=lambda e: e["ts"])
+        return {"gpu": gpu, "entries": entries[-limit:]}
+    except Exception as e:
+        return {"gpu": gpu, "error": str(e), "entries": []}
+
+
 # ── Inference Benchmark (echte tk/s) ──────────────────────────────────────
 def run_benchmark(target):
     base = OLLAMA_EP.get(target)
@@ -213,6 +242,17 @@ class Handler(BaseHTTPRequestHandler):
             with hist_lock:
                 h = {"gen": history["gen"][-MAX_HIST:], "prompt": history["prompt"][-MAX_HIST:]}
             return self._send(200, h)
+        if path == "/api/logs":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            gpu = (q.get("gpu", ["dual"])[0] or "dual")
+            if gpu not in ("gpu0", "gpu1", "dual"):
+                gpu = "dual"
+            limit_s = q.get("limit", ["80"])[0]
+            try:
+                limit = max(1, min(int(limit_s), 300))
+            except ValueError:
+                limit = 80
+            return self._send(200, get_logs(gpu, limit))
         # static
         rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
         fp = os.path.normpath(os.path.join(WEB_DIR, rel))
