@@ -391,7 +391,7 @@
         view.innerHTML = '<span class="text-slate-600">[IDLE] Keine Inferenz-Aktivität in den letzten 60 min.</span>';
         return;
       }
-      const model = activeModelOf(entries);
+      const model = activeModelOf(entries) || (($('core-model').innerText !== 'KEIN MODELL GELADEN' && $('core-source').innerText !== '--') ? $('core-model').innerText : null);
       $('log-model').innerText = model ? 'MOD: ' + model : '';
       view.innerHTML = shown.map(e => {
         const t = new Date(e.ts * 1000).toLocaleTimeString('de-DE', { hour12: false });
