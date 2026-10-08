@@ -10,6 +10,7 @@ Endpoints:
 """
 import json
 import os
+import re
 import threading
 import time
 import urllib.parse
@@ -135,11 +136,11 @@ def build_metrics():
 
 
 # ── Loki (Ollama-Docker-Logs) ─────────────────────────────────────────────
-def loki_query_range(query, limit=150):
+def loki_query_range(query, limit=150, seconds=3600):
     now = int(time.time() * 1e9)
     params = urllib.parse.urlencode({
         "query": query,
-        "start": str(now - 3_600_000_000_000),   # letzte Stunde (ganzzahlige ns!)
+        "start": str(now - seconds * 1_000_000_000),   # ganzzahlige ns!
         "end": str(now),
         "limit": str(limit),
     })
@@ -160,6 +161,46 @@ def get_logs(gpu, limit=80):
         return {"gpu": gpu, "entries": entries[-limit:]}
     except Exception as e:
         return {"gpu": gpu, "error": str(e), "entries": []}
+
+
+# ── Live t/s aus den Ollama-Logzeilen (llama.cpp print_timing) ─────────────
+_TG_RE = re.compile(r"n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s,\s*tg_3s\s*=\s*([\d.]+)\s*t/s")
+_PROMPT_RE = re.compile(r"prompt eval time\s*=\s*[\d.\s]+ms\s*/\s*(\d+)\s*tokens.*?([\d.]+)\s*tokens per second")
+
+
+def get_live_tps(gpu, window=900):
+    """Kontinuierliche t/s-Punkte aus den Live-Logs (letzte `window` Sekunden).
+
+    Punkte:
+      kind=gen    → tg (Ø t/s der laufenden Generation), tg3s (Rolling 3s)
+      kind=prompt → tps des Prompt-Evals (eigener Punkt, wird nicht gemischt)
+    """
+    try:
+        pts = []
+        for s in loki_query_range(f'{{job="ollama",gpu="{gpu}"}}', limit=500, seconds=window):
+            for ts_ns, line in s.get("values", []):
+                m = _TG_RE.search(line)
+                if m:
+                    pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "gen",
+                                "tg": float(m.group(2)), "tg3s": float(m.group(3))})
+                    continue
+                p = _PROMPT_RE.search(line)
+                if p:
+                    pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "prompt",
+                                "tps": float(p.group(2))})
+        pts.sort(key=lambda x: x["t"])
+        now = int(time.time())
+        last_gen = next((p for p in reversed(pts) if p["kind"] == "gen"), None)
+        return {
+            "gpu": gpu,
+            "window_s": window,
+            "count": len(pts),
+            "points": pts,
+            "active": bool(last_gen and now - last_gen["t"] < 90),
+            "current_tps": round(last_gen["tg"], 1) if last_gen else None,
+        }
+    except Exception as e:
+        return {"gpu": gpu, "error": str(e), "points": [], "count": 0}
 
 
 # ── Inference Benchmark (echte tk/s) ──────────────────────────────────────
@@ -253,6 +294,17 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 limit = 80
             return self._send(200, get_logs(gpu, limit))
+        if path == "/api/live_tps":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            gpu = (q.get("gpu", ["dual"])[0] or "dual")
+            if gpu not in ("gpu0", "gpu1", "dual"):
+                gpu = "dual"
+            win_s = q.get("window", ["900"])[0]
+            try:
+                window = max(60, min(int(win_s), 3600))
+            except ValueError:
+                window = 900
+            return self._send(200, get_live_tps(gpu, window))
         # static
         rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
         fp = os.path.normpath(os.path.join(WEB_DIR, rel))
