@@ -31,6 +31,16 @@
     .bar-track { background: rgba(2, 6, 23, 0.9); border: 1px solid rgba(148,163,184,0.2); }
     @keyframes pulse-slow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
+    /* Drag & Drop der Kacheln */
+    #main-grid.is-dragging .draggable-card { transition: none; }
+    .draggable-card.dragging { opacity: 0.35; transform: scale(0.98); }
+    .drop-slot {
+      border: 2px dashed rgba(148,163,184,0.5); border-radius: 0.5rem;
+      background: rgba(148,163,184,0.07); box-shadow: none !important;
+    }
+    .drop-slot.active { border-color: #00f0ff; background: rgba(0,240,255,0.10); box-shadow: 0 0 24px rgba(0,240,255,0.35) !important; }
+    .drop-slot.active-amber { border-color: #f59e0b; background: rgba(245,158,11,0.10); box-shadow: 0 0 24px rgba(245,158,11,0.35) !important; }
+    .drop-slot.active-emerald { border-color: #10b981; background: rgba(16,185,129,0.10); box-shadow: 0 0 24px rgba(16,185,129,0.35) !important; }
   </style>
 </head>
 <body class="h-screen w-screen relative scanline flex flex-col justify-between p-6 select-none">
@@ -54,13 +64,13 @@
     </div>
   </header>
 
-  <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 -->
-  <div class="relative z-10 grid grid-cols-12 gap-6 my-auto pointer-events-none items-stretch">
+  <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 (Kacheln verschiebbar) -->
+  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-6 my-auto pointer-events-none items-stretch">
 
     <!-- LEFT CORTEX // GPU 0 -->
-    <div class="col-span-3 cyber-card p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu0" draggable="true" class="draggable-card col-span-3 cyber-card p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
-        <span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
       </div>
       <div>
@@ -87,9 +97,9 @@
     </div>
 
     <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
-    <div class="col-span-6 cyber-card-amber p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-core" draggable="true" class="draggable-card col-span-6 cyber-card-amber p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-amber-500/30 pb-2">
-        <span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-amber-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span></span>
         <span class="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-500/50" id="core-source">--</span>
       </div>
       <div class="flex items-end justify-between gap-4">
@@ -125,9 +135,9 @@
     </div>
 
     <!-- RIGHT CORTEX // GPU 1 -->
-    <div class="col-span-3 cyber-card-emerald p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu1" draggable="true" class="draggable-card col-span-3 cyber-card-emerald p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-emerald-500/30 pb-2">
-        <span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
       </div>
       <div>
@@ -164,7 +174,10 @@
         <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900">DUAL</button>
         <span id="log-model" class="text-[10px] text-slate-500 ml-2"></span>
       </div>
-      <span id="log-status" class="text-[10px] text-slate-500">--</span>
+      <div class="flex items-center gap-3">
+        <button onclick="applyOrder(DEFAULT_ORDER.slice())" class="px-2 py-0.5 text-[10px] bg-slate-900 text-slate-400 border border-slate-700 rounded hover:text-cyan-300 hover:border-cyan-500/50" title="Kacheln zurück ins Standard-Layout">↺ RESET LAYOUT</button>
+        <span id="log-status" class="text-[10px] text-slate-500">--</span>
+      </div>
     </div>
     <div id="log-view" class="h-36 overflow-y-auto bg-black/60 border border-slate-800 rounded p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all scrollbar-thin"></div>
     <div class="mt-2 text-xs text-slate-400">
@@ -173,6 +186,82 @@
   </div>
 
   <script>
+    // ── 0. Drag & Drop der Kacheln (Reihenfolge + Persistenz) ─────────────
+    const grid = document.getElementById('main-grid');
+    const PANEL_ORDER_KEY = 'llmetrix-panel-order';
+    const DEFAULT_ORDER = ['panel-gpu0', 'panel-core', 'panel-gpu1'];
+    let dragId = null, dropGhost = null;
+
+    function applyOrder(order) {
+      order.forEach(id => grid.appendChild(document.getElementById(id)));
+      localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(order));
+    }
+    function currentOrder() {
+      try {
+        const saved = JSON.parse(localStorage.getItem(PANEL_ORDER_KEY) || 'null');
+        return Array.isArray(saved) && saved.length === 3 && DEFAULT_ORDER.every(id => saved.includes(id)) ? saved : DEFAULT_ORDER.slice();
+      } catch (_) { return DEFAULT_ORDER.slice(); }
+    }
+    applyOrder(currentOrder());
+
+    function makePlaceholder(card) {
+      const ph = document.createElement('div');
+      ph.className = 'drop-slot';
+      for (const cls of ['col-span-3', 'col-span-6']) if (card.classList.contains(cls)) ph.classList.add(cls);
+      ph.style.height = card.getBoundingClientRect().height + 'px';
+      return ph;
+    }
+
+    grid.addEventListener('dragstart', e => {
+      const card = e.target.closest('.draggable-card');
+      if (!card) return;
+      if (!e.target.hasAttribute('data-handle')) { e.preventDefault(); return; }  // nur am ⠿-Handle
+      dragId = card.id;
+      e.dataTransfer.effectAllowed = 'move';
+      try { e.dataTransfer.setData('text/plain', card.id); } catch (_) {}
+      dropGhost = makePlaceholder(card);
+      card.parentNode.insertBefore(dropGhost, card);
+      grid.classList.add('is-dragging');
+      requestAnimationFrame(() => card.classList.add('dragging'));
+    });
+
+    document.addEventListener('dragover', e => {
+      if (!dragId) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      const card = document.getElementById(dragId);
+      const others = [...grid.children].filter(el => el !== card && el !== dropGhost);
+      let insertBefore = null;
+      for (const el of others) {
+        const r = el.getBoundingClientRect();
+        if (e.clientX < r.left + r.width / 2) { insertBefore = el; break; }
+      }
+      insertBefore ? grid.insertBefore(dropGhost, insertBefore) : grid.appendChild(dropGhost);
+    });
+
+    function endDrag(e) {
+      if (!dragId) return;
+      const card = document.getElementById(dragId);
+      card.classList.remove('dragging');
+      if (dropGhost && dropGhost.parentNode === grid) {
+        grid.insertBefore(card, dropGhost);
+        dropGhost.remove();
+      } else if (card.parentNode !== grid) {
+        grid.appendChild(card);
+      }
+      dropGhost = null; dragId = null;
+      grid.classList.remove('is-dragging');
+      applyOrder([...grid.children].filter(el => el.id && el.id.startsWith('panel-')).map(el => el.id));
+      if (e) e.preventDefault();
+    }
+    document.addEventListener('drop', endDrag);
+    grid.addEventListener('dragend', () => endDrag(null));
+
+    // Doppelklick auf Kachel/Handle → Standard-Layout
+    grid.querySelectorAll('.draggable-card').forEach(card => {
+      card.addEventListener('dblclick', e => { if (e.target.hasAttribute('data-handle') || e.target === card) applyOrder(DEFAULT_ORDER.slice()); });
+    });
+
     // ── 1. Three.js Scene (unverändert, bewährt) ─────────────────────────
     const container = document.getElementById('canvas-container');
     const scene = new THREE.Scene();
