@@ -35,9 +35,7 @@
     #main-grid.is-dragging .draggable-card { transition: none; }
     body.is-dragging { cursor: grabbing !important; user-select: none; }
     body.is-dragging [data-handle] { cursor: grabbing !important; }
-    .draggable-card.dragging { opacity: 0.35; transform: scale(0.98); }
-    .drag-ghost { opacity: 0.92; box-shadow: 0 16px 48px rgba(0,0,0,0.7), 0 0 24px rgba(0,240,255,0.18); }
-    .drop-target { outline: 2px dashed rgba(0,240,255,0.65); outline-offset: 3px; box-shadow: 0 0 28px rgba(0,240,255,0.28) !important; }
+    .draggable-card.live-drag { opacity: 0.6; z-index: 30; cursor: grabbing; outline: 2px dashed rgba(0,240,255,0.7); outline-offset: -2px; box-shadow: 0 18px 50px rgba(0,0,0,0.75), 0 0 26px rgba(0,240,255,0.25) !important; }
     [data-handle] { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; min-height: 18px; padding: 0 4px; touch-action: none; font-size: 14px; }
   </style>
 </head>
@@ -207,21 +205,6 @@
     function gridCards() {
       return [...grid.children].filter(el => el.id && el.id.startsWith('panel-'));
     }
-    function makeGhost(card) {
-      const g = card.cloneNode(true);
-      g.id = '';
-      g.classList.add('drag-ghost');
-      g.style.position = 'fixed';
-      g.style.zIndex = 9999;
-      g.style.margin = '0';
-      g.style.pointerEvents = 'none';
-      return g;
-    }
-    function markTarget(el) {
-      gridCards().forEach(c => c.classList.remove('drop-target'));
-      if (el && el.parentNode === grid) el.classList.add('drop-target');
-    }
-
     let drag = null;
     const DRAG_THRESHOLD = 6; // px bis es als Drag zählt (darunter = Klick)
 
@@ -232,9 +215,7 @@
       const card = handle.closest('.draggable-card');
       if (!card) return;
       // kein preventDefault → dblclick (Reset) bleibt erhalten
-      const r = card.getBoundingClientRect();
-      drag = { card, offX: e.clientX - r.left, offY: e.clientY - r.top,
-               w: r.width, h: r.height, moved: false, startX: e.clientX, startY: e.clientY, ghost: null };
+      drag = { card, moved: false, startX: e.clientX, startY: e.clientY };
       window.addEventListener('pointermove', onPointerMove);
       window.addEventListener('pointerup', onPointerUp);
       window.addEventListener('pointercancel', onPointerUp);
@@ -242,27 +223,33 @@
 
     function onPointerMove(e) {
       if (!drag) return;
+      if (e.cancelable) e.preventDefault();
       if (!drag.moved) {
         if (Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY) < DRAG_THRESHOLD) return;
         drag.moved = true;
         document.body.classList.add('is-dragging');
-        drag.ghost = makeGhost(drag.card);
-        drag.ghost.style.width = drag.w + 'px';
-        drag.ghost.style.height = drag.h + 'px';
-        document.body.appendChild(drag.ghost);
-        drag.card.classList.add('dragging');
+        drag.card.classList.add('live-drag');
       }
-      if (e.cancelable) e.preventDefault();
-      drag.ghost.style.left = (e.clientX - drag.offX) + 'px';
-      drag.ghost.style.top = (e.clientY - drag.offY) + 'px';
-      // Ziel: erste Kachel, deren horizontale Mitte links vom Cursor liegt
+      // LIVEREFLOW: Kachel wird live an die Ziehpunkt-Position geschoben,
+      // Nachbarn gleiten animiert aus dem Weg → man sieht sofort das End-Ergebnis.
+      const others = gridCards().filter(c => c !== drag.card);
+      // Ziel: vor der ersten Kachel, deren Mitte RECHTS vom Cursor liegt; sonst ans Ende.
       let insertBefore = null;
-      for (const el of gridCards().filter(c => c !== drag.card)) {
-        const r = el.getBoundingClientRect();
-        if (e.clientX < r.left + r.width / 2) { insertBefore = el; break; }
+      for (const el of others) { const r = el.getBoundingClientRect(); if (e.clientX < r.left + r.width / 2) { insertBefore = el; break; } }
+      const posKey = insertBefore ? 'before:' + insertBefore.id : 'last';
+      if (posKey === drag.card.dataset.dragpos) return;   // Position gleich → nichts tun
+      // FLIP: altes Grid erfassen → umsortieren → Delta animiert
+      for (const el of [...gridCards()]) { const r = el.getBoundingClientRect(); if (r.left !== undefined) el.dataset.flipLeft = r.left, el.dataset.flipTop = r.top; }
+      if (insertBefore) grid.insertBefore(drag.card, insertBefore); else grid.appendChild(drag.card);
+      for (const el of [...gridCards()]) {
+        const dx = parseFloat(el.dataset.flipLeft ?? '') - el.getBoundingClientRect().left;
+        const dy = parseFloat(el.dataset.flipTop ?? '') - el.getBoundingClientRect().top;
+        if (Math.abs(dx) < 1 && Math.abs(dy) < 1) continue;
+        el.animate([{ transform: `translate(${dx}px, ${dy}px)` }, { transform: 'none' }],
+                   { duration: 170, easing: 'cubic-bezier(0.2, 0.8, 0.3, 1)' });
+        delete el.dataset.flipLeft; delete el.dataset.flipTop;
       }
-      markTarget(insertBefore);
-      drag.insertBefore = insertBefore;
+      drag.card.dataset.dragpos = posKey;
     }
 
     function onPointerUp(e) {
@@ -272,13 +259,10 @@
       if (!drag) return;
       const d = drag; drag = null;
       document.body.classList.remove('is-dragging');
-      markTarget(null);
-      d.card.classList.remove('dragging');
-      if (d.ghost) d.ghost.remove();
       if (!d.moved) return;                                    // war ein Klick
-      if (d.insertBefore && d.insertBefore.parentNode === grid) grid.insertBefore(d.card, d.insertBefore);
-      else grid.appendChild(d.card);
-      applyOrder(gridCards().map(el => el.id));
+      d.card.classList.remove('live-drag');
+      delete d.card.dataset.dragpos;
+      applyOrder(gridCards().map(el => el.id));                // neue Reihenfolge + Persistenz
     }
 
     grid.addEventListener('pointerdown', onPointerDown);
