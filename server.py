@@ -203,6 +203,101 @@ def get_live_tps(gpu, window=900):
         return {"gpu": gpu, "error": str(e), "points": [], "count": 0}
 
 
+# ── Ollama `ollama show` per HTTP-Äquivalent (/api/show) ──────────────────
+def _mi_tail(model_info, tail):
+    """Ersten Wert eines model_info-Keys mit Suffix (arch-Prefix variiert)."""
+    for k, v in (model_info or {}).items():
+        if k.endswith("." + tail):
+            return v
+    return None
+
+
+def ollama_show(base, name):
+    req = urllib.request.Request(base + "/api/show", data=json.dumps({"name": name}).encode(),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.load(r)
+
+
+def get_model_info(gpu):
+    """Modell-Details eines Containers (dual/gpu0/gpu1) — das JSON-Äquivalent
+    von `docker exec ollama-{gpu} ollama show <model>`."""
+    base = OLLAMA_EP.get(gpu)
+    out = {"gpu": gpu, "online": False, "models": []}
+    if not base:
+        return out
+    try:
+        with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
+            ps = json.load(r)
+        out["online"] = True
+    except Exception as e:
+        out["error"] = str(e)
+        return out
+    for m in ps.get("models", []):  # letztes Array-Element = zuletzt geladen
+        name = m.get("name")
+        rec = {
+            "name": name,
+            "effective_ctx": m.get("context_length"),
+            "size_vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
+            "processor": m.get("processor"),
+        }
+        try:
+            sh = ollama_show(base, name)
+        except Exception as e:
+            rec["spec_error"] = str(e)
+            out["models"].append(rec)
+            continue
+        mi = sh.get("model_info") or {}
+        pi = sh.get("projector_info") or {}
+        det = sh.get("details") or {}
+        par_raw = sh.get("parameters") or {}
+        params = {}                      # `ollama show` liefert parameters als alignierten Text → parsen
+        if isinstance(par_raw, dict):
+            params = par_raw
+        elif isinstance(par_raw, str):
+            for ln in par_raw.splitlines():
+                m = re.match(r"^(\S+)\s{2,}(\S.*?)\s*$", ln)
+                if m:
+                    try: params[m.group(1)] = float(m.group(2))
+                    except ValueError: params[m.group(1)] = int(m.group(2))
+        caps = sh.get("capabilities") or []
+        arch = _mi_tail(mi, "general.architecture") or det.get("family")
+        spec = {
+            "architecture": arch,
+            "param_count": _mi_tail(mi, "general.parameter_count"),
+            "param_label": det.get("parameter_size"),
+            "quantization": det.get("quantization_level"),
+            "native_ctx": _mi_tail(mi, "context_length"),
+            "blocks": _mi_tail(mi, "block_count"),
+            "embedding": _mi_tail(mi, "embedding_length"),
+            "attn_heads": _mi_tail(mi, "attention.head_count"),
+            "kv_heads": _mi_tail(mi, "attention.head_count_kv"),
+            "head_size": _mi_tail(mi, "attention.key_length"),
+            "full_attn_every": _mi_tail(mi, "full_attention_interval"),
+            "rope_dim": _mi_tail(mi, "rope.dimension_count"),
+            "rope_base": _mi_tail(mi, "rope.freq_base"),
+            "ssm_state": _mi_tail(mi, "ssm.state_size"),
+            "ssm_groups": _mi_tail(mi, "ssm.group_count"),
+            "mtp_layers": _mi_tail(mi, "nextn_predict_layers"),
+        }
+        vision = None
+        if _mi_tail(pi, "vision.has_vision_encoder") or any(k.startswith("clip.") for k in pi):
+            vision = {
+                "projector": next((v for k, v in pi.items() if k.endswith("projector_type")), None),
+                "image_size": next((v for k, v in pi.items() if k.endswith("vision.image_size")), None),
+                "blocks": next((v for k, v in pi.items() if k.endswith("vision.block_count")), None),
+            }
+        sample = {k: params[k] for k in ("temperature", "top_k", "top_p", "min_p", "repeat_penalty") if k in params}
+        rec["spec"] = spec
+        rec["vision"] = vision
+        rec["capabilities"] = caps
+        rec["sampling"] = sample
+        rec["modelfile_ctx"] = params.get("num_ctx")
+        rec["draft_num_predict"] = params.get("draft_num_predict")
+        out["models"].append(rec)
+    return out
+
+
 # ── Inference Benchmark (echte tk/s) ──────────────────────────────────────
 def run_benchmark(target):
     base = OLLAMA_EP.get(target)
@@ -305,6 +400,12 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError:
                 window = 900
             return self._send(200, get_live_tps(gpu, window))
+        if path == "/api/model_info":
+            q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
+            gpu = (q.get("gpu", ["dual"])[0] or "dual")
+            if gpu not in ("gpu0", "gpu1", "dual"):
+                gpu = "dual"
+            return self._send(200, get_model_info(gpu))
         # static
         rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
         fp = os.path.normpath(os.path.join(WEB_DIR, rel))

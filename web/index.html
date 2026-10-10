@@ -89,7 +89,10 @@
           <div class="text-base font-bold text-cyan-300"><span id="gpu0-power">--</span> W</div>
         </div>
       </div>
-      <div class="mt-auto text-xs text-slate-400 border-t border-cyan-500/20 pt-2">SYNAPSE: <span id="gpu0-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+      <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-cyan-500/20 pt-2">
+        <div class="text-[10px] font-mono text-cyan-200/90 truncate" id="gpu0-chip" title="Modell auf GPU 0">CHIP: --</div>
+        <div>SYNAPSE: <span id="gpu0-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+      </div>
     </div>
 
     <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
@@ -131,6 +134,19 @@
       <div class="text-[11px] text-slate-400 border-t border-amber-500/20 pt-2">
         LAST BENCHMARK: <span id="last-bench" class="text-amber-300 font-bold">noch keine Messung</span>
       </div>
+
+      <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show) -->
+      <div id="spec-block" class="hidden bg-slate-950/80 border border-amber-500/25 rounded p-2.5">
+        <div class="flex justify-between items-center mb-1.5 gap-2">
+          <span class="text-[9px] font-bold tracking-widest text-amber-400/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/50 ml-1">--</span></span>
+          <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
+        </div>
+        <div class="text-[10px] leading-relaxed text-slate-300 font-mono space-y-0.5">
+          <div><span class="text-slate-500">ARCH</span> <span id="spec-arch" class="text-amber-200 font-bold">--</span> · <span id="spec-size">--</span> · Q<span id="spec-quant">--</span> · CTX <span id="spec-ctx">--</span></div>
+          <div><span class="text-slate-500">BUILD</span> <span id="spec-build">--</span></div>
+          <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
+        </div>
+      </div>
     </div>
 
     <!-- RIGHT CORTEX // GPU 1 -->
@@ -159,7 +175,10 @@
           <div class="text-base font-bold text-emerald-300"><span id="gpu1-power">--</span> W</div>
         </div>
       </div>
-      <div class="mt-auto text-xs text-slate-400 border-t border-emerald-500/20 pt-2">SYNAPSE: <span id="gpu1-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+      <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-emerald-500/20 pt-2">
+        <div class="text-[10px] font-mono text-emerald-200/90 truncate" id="gpu1-chip" title="Modell auf GPU 1">CHIP: --</div>
+        <div>SYNAPSE: <span id="gpu1-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
+      </div>
     </div>
   </div>
 
@@ -331,6 +350,7 @@
 
     // ── 2. State + sanfte Opacity-Lerp (statt rohem Random) ──────────────
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
+    let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
     let targetOpacity = { left: 0, right: 0 };
 
     function animate() {
@@ -382,6 +402,67 @@
       $('core-vram').innerText = (model.vram_gb || 0).toFixed(1) + ' GB';
     }
 
+    // ── 4b. MODEL SPEC (ollama show des aktiven Containers) + GPU-Chips ───
+    const specCache = {};   // gpu -> {t, d}  (60 s Cache — show ist lokal auf .40 schnell)
+    async function fetchModelInfo(gpu) {
+      if (specCache[gpu] && Date.now() - specCache[gpu].t < 60000) return specCache[gpu].d;
+      try {
+        const r = await fetch('/api/model_info?gpu=' + gpu, { cache: 'no-store' });
+        if (!r.ok) return null;
+        const d = await r.json();
+        specCache[gpu] = { t: Date.now(), d };
+        return d;
+      } catch (_) { return null; }
+    }
+
+    function humanB(n) { return n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? Math.round(n / 1e6) + 'M' : String(n); }
+    function fmtNum(n) { try { return Number(n).toLocaleString('de-DE'); } catch (_) { return String(n); } }
+
+    function setSpec(gpuKey, mi) {
+      const blk = $('spec-block');
+      if (!mi || !mi.models || !mi.models.length) { blk.classList.add('hidden'); return; }
+      const m = mi.models[mi.models.length - 1], s = m.spec || {};
+      const ctx = m.effective_ctx || m.modelfile_ctx;
+      $('spec-src').innerText = gpuKey.toUpperCase();
+      $('spec-caps').innerText = m.name || '';
+      $('spec-arch').innerText = (s.architecture || '?').toUpperCase();
+      $('spec-size').innerText = s.param_label || (s.param_count ? humanB(s.param_count) : '--');
+      $('spec-quant').innerText = (s.quantization || '--').replace(/^Q/, '');
+      $('spec-ctx').innerText = ctx ? fmtNum(ctx) + (s.native_ctx && Number(s.native_ctx) > Number(ctx) ? ' (native ' + fmtNum(s.native_ctx) + ')' : '') : '--';
+      const ropeBase = s.rope_base ? (Number(s.rope_base) >= 1e6 ? (s.rope_base / 1e6).toFixed(0) + 'M' : String(s.rope_base)) : null;
+      const build = [];
+      if (s.blocks) build.push(s.blocks + ' Blöcke');
+      if (s.attn_heads && s.kv_heads) build.push('Attn ' + s.attn_heads + 'H/' + s.kv_heads + 'KV');
+      if (s.rope_dim && ropeBase) build.push('RoPE d' + s.rope_dim + '@' + ropeBase);
+      if (s.ssm_state) build.push('Mamba d' + s.ssm_state);
+      if (s.full_attn_every && Number(s.full_attn_every) > 1) build.push('full-attn 1/' + s.full_attn_every);
+      $('spec-build').innerText = build.join(' · ') || '--';
+      const extra = [];
+      if (m.capabilities && m.capabilities.length) extra.push(m.capabilities.join('+'));
+      if (s.mtp_layers) extra.push('MTP-Draft ' + s.mtp_layers + 'L');
+      const sm = [];
+      if (m.sampling && m.sampling.temperature != null) sm.push('T' + m.sampling.temperature);
+      if (m.sampling && m.sampling.top_k != null) sm.push('K' + m.sampling.top_k);
+      if (m.sampling && m.sampling.top_p != null) sm.push('P' + m.sampling.top_p);
+      if (m.sampling && m.sampling.repeat_penalty != null) sm.push('RP' + m.sampling.repeat_penalty);
+      if (m.draft_num_predict != null) sm.push('Draft ' + m.draft_num_predict + ' tokens');
+      if (sm.length) extra.push(sm.join(' '));
+      $('spec-extra').innerText = extra.join(' · ') || '--';
+      blk.classList.remove('hidden');
+    }
+
+    function setChip(slot, mi) {
+      const el = $(slot + '-chip');
+      if (!el) return;
+      if (!mi.models || !mi.models.length) { el.innerText = 'CHIP: -- (keine Last)'; return; }
+      const m = mi.models[mi.models.length - 1], s = m.spec || {};
+      let t = 'CHIP: ' + (m.name || '?') + '  |  ' + (s.param_label || '?') + ' · ' + (s.quantization || '?') +
+              ' · CTX ' + fmtNum(m.effective_ctx || m.modelfile_ctx || 0) +
+              (s.native_ctx && Number(s.native_ctx) > Number(m.effective_ctx || m.modelfile_ctx || 0) ? ' (native ' + fmtNum(s.native_ctx) + ')' : '');
+      if (/dual/i.test(String(m.processor || ''))) t += '  [TENSOR-SPLIT → DUAL]';
+      el.innerText = t;
+    }
+
     // ── 4. Sparklines: LIVE t/s aus der laufenden Erzeugung (Loki-Logs) ───
     function drawSpark(canvasId, points, color) {
       const c = $(canvasId), ctx = c.getContext('2d');
@@ -431,6 +512,8 @@
       const pts = best.d.points || [];
       drawSpark('spark-gen', pts.filter(p => p.kind === 'gen').map(p => [p.t, p.tg]), 'rgb(251,191,36)');
       drawSpark('spark-prompt', pts.filter(p => p.kind === 'prompt').map(p => [p.t, p.tps]), 'rgb(34,211,238)');
+      lastLiveSrc = best.src;   // Spec-Block: aktive Quelle des MODEL-SPEC nachziehen
+
       const lastGen = [...pts].reverse().find(p => p.kind === 'gen');
       const lastPrompt = [...pts].reverse().find(p => p.kind === 'prompt');
       $('spark-gen-now').innerText = lastGen ? lastGen.tg.toFixed(1) : '--';
@@ -474,6 +557,23 @@
           if (o[k] && o[k].online && o[k].models && o[k].models.length) { source = k.toUpperCase(); model = o[k].models[0]; break; }
         }
         setCore(source || 'KEIN ENDPOINT AKTIV', model);
+
+        // MODEL SPEC + GPU-Chips: Specs aller drei Container (60 s Cache).
+        // Der Spec-Block zeigt den AKTIVEN Container — aktiv = dort läuft die Erzeugung
+        // (aktive Quelle der LIVE-t/s), sonst das geladene Modell. gpu0/gpu1/dual werden
+        // alle bedient: wer gerade inference betreibt, dessen Spec steht hier.
+        if (source) {
+          const infos = await Promise.all(['gpu0', 'gpu1', 'dual'].map(k => fetchModelInfo(k)));
+          setChip('gpu0', infos[0]);
+          setChip('gpu1', infos[1]);
+          const map = { gpu0: infos[0], gpu1: infos[1], dual: infos[2] };
+          let specSrc = lastLiveSrc && map[lastLiveSrc] ? lastLiveSrc : null, specMi = null;
+          for (const k of ['dual', 'gpu0', 'gpu1']) {     // Fallback: erster mit geladenem Modell
+            if (k === specSrc) { specMi = { ...specMi, ...map[k] }; break; }
+            if (!specMi && map[k] && map[k].models && map[k].models.length) { specSrc = k; specMi = map[k]; }
+          }
+          setSpec(specSrc || 'dual', specMi);
+        }
 
         log(`[TELEMETRY]: GPU0 ${g0 ? Math.round(g0.load) : '--'}% / GPU1 ${g1 ? Math.round(g1.load) : '--'}% — Modell: ${model ? model.name : 'none'}`, 'text-cyan-400');
       } catch (e) {
