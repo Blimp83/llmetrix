@@ -5,8 +5,6 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>LLMetrix // Asymmetric Neural Matrix</title>
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
   <style>
     body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; overflow: hidden; }
     .scanline {
@@ -41,8 +39,6 @@
 </head>
 <body class="h-screen w-screen relative scanline flex flex-col justify-between p-6 select-none">
 
-  <div id="canvas-container" class="absolute inset-0 z-0"></div>
-
   <!-- Header HUD -->
   <header class="relative z-10 flex justify-between items-center border-b border-cyan-500/30 pb-4 bg-slate-950/80 p-4 rounded-b-lg">
     <div>
@@ -62,6 +58,19 @@
 
   <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 (Kacheln verschiebbar) -->
   <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-6 my-auto pointer-events-none items-stretch">
+
+    <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
+    <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-4 rounded-lg space-y-2 pointer-events-auto">
+      <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 gap-2 flex-wrap">
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ACTIVITY // BRAIN MAP</span><span class="text-[10px] text-slate-500">GPU 0 (L) · DUAL (CALLOSUM) · GPU 1 (R)</span></span>
+        <span class="flex items-center gap-3 text-[10px] font-mono">
+          <span class="text-cyan-300" id="brain-g0">GPU0: --</span>
+          <span id="brain-dual" class="text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900">DUAL: IDLE</span>
+          <span class="text-emerald-300" id="brain-g1">GPU1: --</span>
+        </span>
+      </div>
+      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:200px"></canvas>
+    </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
     <div id="panel-gpu0" class="draggable-card col-span-3 cyber-card p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
@@ -207,7 +216,7 @@
     // ── 0. Drag & Drop der Kacheln (Pointer Events — robust für echte Maus) ─
     const grid = document.getElementById('main-grid');
     const PANEL_ORDER_KEY = 'llmetrix-panel-order';
-    const DEFAULT_ORDER = ['panel-gpu0', 'panel-core', 'panel-gpu1'];
+    const DEFAULT_ORDER = ['panel-brain', 'panel-gpu0', 'panel-core', 'panel-gpu1'];
 
     function applyOrder(order) {
       order.forEach(id => grid.appendChild(document.getElementById(id)));
@@ -216,7 +225,7 @@
     function currentOrder() {
       try {
         const saved = JSON.parse(localStorage.getItem(PANEL_ORDER_KEY) || 'null');
-        return Array.isArray(saved) && saved.length === 3 && DEFAULT_ORDER.every(id => saved.includes(id)) ? saved : DEFAULT_ORDER.slice();
+        return Array.isArray(saved) && saved.length === DEFAULT_ORDER.length && DEFAULT_ORDER.every(id => saved.includes(id)) ? saved : DEFAULT_ORDER.slice();
       } catch (_) { return DEFAULT_ORDER.slice(); }
     }
     applyOrder(currentOrder());
@@ -291,79 +300,161 @@
       card.addEventListener('dblclick', e => { if (e.target.hasAttribute('data-handle') || e.target === card) applyOrder(DEFAULT_ORDER.slice()); });
     });
 
-    // ── 1. Three.js Scene (unverändert, bewährt) ─────────────────────────
-    const container = document.getElementById('canvas-container');
-    const scene = new THREE.Scene();
-    scene.fog = new THREE.FogExp2(0x020610, 0.018);
-
-    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 0.1, 1000);
-    camera.position.set(12, 4, 18);
-
-    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
-    renderer.setSize(window.innerWidth, window.innerHeight);
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    container.appendChild(renderer.domElement);
-
-    const controls = new THREE.OrbitControls(camera, renderer.domElement);
-    controls.enableDamping = true;
-    controls.dampingFactor = 0.04;
-    scene.add(new THREE.AmbientLight(0xffffff, 0.4));
-
-    function buildAsymmetricHemisphere(isLeft) {
-      const geo = new THREE.SphereGeometry(5, 48, 48);
-      const pos = geo.attributes.position;
-      const dir = isLeft ? -1 : 1;
-      for (let i = 0; i < pos.count; i++) {
-        let x = pos.getX(i), y = pos.getY(i), z = pos.getZ(i);
-        z *= 1.45; y *= 0.85; x *= 0.65; x += dir * 1.6;
-        if (z > -1.5 && z < 2.0 && y < 0.5) {
-          x += dir * Math.sin((z + 1.5) * 0.8) * 0.6;
-          y -= Math.cos(z * 0.5) * 0.5;
-        }
-        if (z < -2.0) { y *= 0.8; x *= 0.85; }
-        if (z < -0.5 && y < -1.0) { y += Math.abs(z) * 0.35; }
-        if (z > 2.0) { y *= 0.9; }
-        const gyri = Math.sin(x * 3.2) * Math.cos(y * 3.8) * Math.sin(z * 3.2) * 0.4;
-        const detailFolds = Math.cos(x * 6.5 + z * 6.5) * 0.12;
-        const totalNoise = gyri + detailFolds;
-        pos.setX(i, x + totalNoise * 0.25);
-        pos.setY(i, y + totalNoise * 0.25);
-        pos.setZ(i, z + totalNoise * 0.35);
-      }
-      geo.computeVertexNormals();
-      return geo;
-    }
-
-    const leftGeo = buildAsymmetricHemisphere(true);
-    const leftPointsMat = new THREE.PointsMaterial({ color: 0x00f0ff, size: 0.11, transparent: true, opacity: 0.85 });
-    const leftWireMat = new THREE.MeshBasicMaterial({ color: 0x00f0ff, wireframe: true, transparent: true, opacity: 0.0 });
-    const rightGeo = buildAsymmetricHemisphere(false);
-    const rightPointsMat = new THREE.PointsMaterial({ color: 0x10b981, size: 0.11, transparent: true, opacity: 0.85 });
-    const rightWireMat = new THREE.MeshBasicMaterial({ color: 0x10b981, wireframe: true, transparent: true, opacity: 0.0 });
-
-    const brainGroup = new THREE.Group();
-    brainGroup.add(new THREE.Points(leftGeo, leftPointsMat));
-    brainGroup.add(new THREE.Mesh(leftGeo, leftWireMat));
-    brainGroup.add(new THREE.Points(rightGeo, rightPointsMat));
-    brainGroup.add(new THREE.Mesh(rightGeo, rightWireMat));
-    scene.add(brainGroup);
-
-    // ── 2. State + sanfte Opacity-Lerp (statt rohem Random) ──────────────
+    // ── 1. NEURAL BRAIN (2D) — GPU0 (links) · DUAL (Corpus Callosum) · GPU1 (rechts) ──
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
-    let targetOpacity = { left: 0, right: 0 };
+    let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
 
-    function animate() {
-      requestAnimationFrame(animate);
-      brainGroup.rotation.y += 0.0006;
-      // Lerp + leichtes organisches Zittern nur bei aktiver Last
-      const jitter = (Math.random() - 0.5) * 0.08;
-      leftWireMat.opacity += ((targetOpacity.left + (targetOpacity.left > 0.1 ? jitter : 0)) - leftWireMat.opacity) * 0.08;
-      rightWireMat.opacity += ((targetOpacity.right + (targetOpacity.right > 0.1 ? jitter : 0)) - rightWireMat.opacity) * 0.08;
-      controls.update();
-      renderer.render(scene, camera);
+    const brainCanvas = document.getElementById('brain-canvas');
+    const B = { w: 0, h: 0, neuronsL: [], neuronsR: [], edgesL: [], edgesR: [], tex: null, partsL: [], partsR: [] };
+    const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
+
+    function buildBrain() {
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      B.w = brainCanvas.clientWidth; B.h = brainCanvas.clientHeight;
+      if (!B.w || !B.h) return;
+      brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
+      const cx0 = B.w / 2, cy = B.h / 2, hw = Math.min(B.w * 0.46, B.h * 1.9), ry = B.h * 0.36;
+      const N = 300;
+      function makeNeurons(sign) {
+        const cx = cx0 + sign * hw * 0.56, rx = hw * 0.44;
+        const pts = []; let guard = 0;
+        while (pts.length < N && guard++ < N * 50) {
+          const u = Math.random() * 2 - 1, v = Math.random() * 2 - 1;
+          if (u * u + v * v > 1) continue;
+          pts.push({ x: cx + rx * u, y: cy + ry * v, p1: Math.random() * 6.28, p2: Math.random() * 6.28, s1: 0.6 + Math.random() * 2.4, s2: 0.5 + Math.random() * 1.8 });
+        }
+        return pts;
+      }
+      B.neuronsL = makeNeurons(-1); B.neuronsR = makeNeurons(1);
+      function edges(pts) {
+        const out = [];
+        for (let i = 0; i < pts.length; i++) {
+          const d = [];
+          for (let j = 0; j < pts.length; j++) if (j !== i) d.push([Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y), j]);
+          d.sort((a, b) => a[0] - b[0]);
+          out.push([i, d[0][1]], [i, d[1][1]]);
+        }
+        return out;
+      }
+      B.edgesL = edges(B.neuronsL); B.edgesR = edges(B.neuronsR);
+      B.partsL = []; B.partsR = [];
+      // Statische Textur: Gyri-Linien + Hemisphären-Outline (einmalig pro Resize)
+      const tex = document.createElement('canvas');
+      tex.width = brainCanvas.width; tex.height = brainCanvas.height;
+      const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      [-1, 1].forEach(sign => {
+        const cx = cx0 + sign * hw * 0.56, rx = hw * 0.44;
+        tc.strokeStyle = 'rgba(148,163,184,0.09)'; tc.lineWidth = 1;
+        for (let k = -3; k <= 3; k++) {
+          tc.beginPath();
+          for (let s = 0; s <= 40; s++) {
+            const u = s / 40 * 2 - 1;
+            const x = cx + rx * u * 0.92;
+            const y = cy + ry * k / 3.5 * Math.sqrt(Math.max(0, 1 - u * u)) + Math.sin(u * 7 + k * 1.7) * 2.5;
+            s === 0 ? tc.moveTo(x, y) : tc.lineTo(x, y);
+          }
+          tc.stroke();
+        }
+        tc.strokeStyle = sign < 0 ? 'rgba(0,240,255,0.18)' : 'rgba(16,185,129,0.18)';
+        tc.beginPath(); tc.ellipse(cx, cy, rx * 1.02, ry * 1.02, 0, 0, 6.29); tc.stroke();
+      });
+      B.tex = tex;
     }
-    animate();
+
+    function brainUpdate() {
+      const g0 = live.gpu0, g1 = live.gpu1;
+      const l0 = lastLiveAll && lastLiveAll.gpu0, l1 = lastLiveAll && lastLiveAll.gpu1, ld = lastLiveAll && lastLiveAll.dual;
+      brainData.load0 = g0 ? g0.load : 0; brainData.load1 = g1 ? g1.load : 0;
+      brainData.tps0 = (l0 && l0.active) ? (l0.current_tps || 0) : 0;
+      brainData.tps1 = (l1 && l1.active) ? (l1.current_tps || 0) : 0;
+      brainData.dual = !!(ld && ld.active);
+      brainData.online = !!(g0 || g1);
+      $('brain-g0').innerText = 'GPU0: ' + (g0 ? Math.round(g0.load) + '%' : '--') + (brainData.tps0 ? ' · ' + Math.round(brainData.tps0) + ' tk/s' : '');
+      $('brain-g1').innerText = 'GPU1: ' + (g1 ? Math.round(g1.load) + '%' : '--') + (brainData.tps1 ? ' · ' + Math.round(brainData.tps1) + ' tk/s' : '');
+      const bd = $('brain-dual');
+      if (brainData.dual) { bd.innerText = 'DUAL: TENSOR-SPLIT AKTIV'; bd.className = 'text-amber-300 px-2 py-0.5 rounded border border-amber-500/60 bg-amber-950 animate-pulse'; }
+      else { bd.innerText = 'DUAL: IDLE'; bd.className = 'text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900'; }
+    }
+
+    function brainFrame(now) {
+      requestAnimationFrame(brainFrame);
+      const c = brainCanvas.getContext('2d');
+      const w = B.w, h = B.h; if (!w || !h) return;
+      const t = now / 1000;
+      c.clearRect(0, 0, w, h);
+      if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
+      const d = brainData;
+      // Aktivität: Load als Basis; aktive Inferenz (t/s) zündet die Hemisphäre;
+      // DUAL (Tensor-Split) aktiv → beide Hemisphären feuern mit
+      let actL = d.online ? 0.95 * (d.load0 / 100) : 0;
+      let actR = d.online ? 0.95 * (d.load1 / 100) : 0;
+      if (d.tps0 > 0) actL = Math.max(actL, 0.8);
+      if (d.tps1 > 0) actR = Math.max(actR, 0.8);
+      if (d.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
+      const idle = 0.06 + 0.03 * Math.sin(t * 0.8);   // Idle-Atmen
+      const aL = Math.max(idle, actL), aR = Math.max(idle, actR);
+      function drawEdges(pts, es, alpha) {
+        c.strokeStyle = 'rgba(148,163,184,' + alpha.toFixed(3) + ')';
+        c.beginPath();
+        for (const e of es) { c.moveTo(pts[e[0]].x, pts[e[0]].y); c.lineTo(pts[e[1]].x, pts[e[1]].y); }
+        c.stroke();
+      }
+      drawEdges(B.neuronsL, B.edgesL, aL * 0.16);
+      drawEdges(B.neuronsR, B.edgesR, aR * 0.16);
+      function drawNeurons(pts, act, rgb) {
+        for (const n of pts) {
+          const f = 0.5 + 0.5 * Math.sin(t * n.s1 + n.p1);
+          const b = act * f;
+          if (b < 0.03) continue;
+          c.fillStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')';
+          c.beginPath(); c.arc(n.x, n.y, 1 + b * 1.8, 0, 6.29); c.fill();
+        }
+      }
+      drawNeurons(B.neuronsL, aL, '0,240,255');
+      drawNeurons(B.neuronsR, aR, '16,185,129');
+      // Synaptische Signale: Partikel entlang der Verbindungen
+      function drawParts(pts, es, arr, act, rgb) {
+        const want = act > 0.15 ? Math.round(act * 40) : 0;
+        while (arr.length < want) arr.push({ e: (Math.random() * es.length) | 0, t: Math.random(), sp: 0.5 + Math.random() * 0.9 });
+        if (arr.length > want) arr.length = want;
+        for (const p of arr) {
+          const e = es[p.e], A = pts[e[0]], Bp = pts[e[1]];
+          p.t += p.sp / 60 * (0.6 + act);
+          if (p.t >= 1) { p.t = 0; p.e = (Math.random() * es.length) | 0; }
+          const x = A.x + (Bp.x - A.x) * p.t, y = A.y + (Bp.y - A.y) * p.t;
+          c.strokeStyle = 'rgba(' + rgb + ',0.55)'; c.lineWidth = 1.2;
+          c.beginPath(); c.moveTo(x - (Bp.x - A.x) * 0.06, y - (Bp.y - A.y) * 0.06); c.lineTo(x, y); c.stroke();
+          c.fillStyle = 'rgba(' + rgb + ',0.95)';
+          c.beginPath(); c.arc(x, y, 1.5, 0, 6.29); c.fill();
+        }
+      }
+      drawParts(B.neuronsL, B.edgesL, B.partsL, aL, '0,240,255');
+      drawParts(B.neuronsR, B.edgesR, B.partsR, aR, '16,185,129');
+      // Corpus Callosum: DUAL (Tensor-Split) aktiv → amber Puls + Signale quer durch die Mitte
+      const cx = w / 2;
+      if (d.dual) {
+        const grad = c.createLinearGradient(cx - 16, 0, cx + 16, 0);
+        grad.addColorStop(0, 'rgba(245,158,11,0)');
+        grad.addColorStop(0.5, 'rgba(245,158,11,' + (0.10 + 0.06 * Math.sin(t * 3)).toFixed(3) + ')');
+        grad.addColorStop(1, 'rgba(245,158,11,0)');
+        c.fillStyle = grad; c.fillRect(cx - 16, 0, 32, h);
+        for (let i = 0; i < 12; i++) {
+          const y = h * 0.15 + Math.abs(Math.sin(i * 12.9898)) * h * 0.7;
+          const x = cx + Math.sin(t * (1.4 + i * 0.13) + i * 2.4) * 11;
+          c.fillStyle = 'rgba(245,158,11,0.9)';
+          c.beginPath(); c.arc(x, y, 1.6, 0, 6.29); c.fill();
+        }
+      } else {
+        c.strokeStyle = 'rgba(245,158,11,0.12)'; c.lineWidth = 1;
+        c.beginPath(); c.moveTo(cx, h * 0.18); c.lineTo(cx, h * 0.82); c.stroke();
+      }
+    }
+
+    buildBrain();
+    requestAnimationFrame(brainFrame);
+    let brainResizeT = null;
+    window.addEventListener('resize', () => { clearTimeout(brainResizeT); brainResizeT = setTimeout(buildBrain, 200); });
 
     // ── 3. UI-Helper ──────────────────────────────────────────────────────
     const $ = id => document.getElementById(id);
@@ -509,6 +600,8 @@
         return (b.d.count || 0) - (a.d.count || 0);
       });
       const best = usable[0];
+      lastLiveAll = {}; usable.forEach(x => { lastLiveAll[x.src] = x.d; });
+      brainUpdate();
       const pts = best.d.points || [];
       drawSpark('spark-gen', pts.filter(p => p.kind === 'gen').map(p => [p.t, p.tg]), 'rgb(251,191,36)');
       drawSpark('spark-prompt', pts.filter(p => p.kind === 'prompt').map(p => [p.t, p.tps]), 'rgb(34,211,238)');
@@ -542,13 +635,14 @@
         if (!m.ai_server_online) {
           log('[OFFLINE]: AI Server (.40) nicht erreichbar — Wake-on-LAN via Nap-Gateway möglich.', 'text-red-400');
           ['gpu0', 'gpu1'].forEach(s => { $(s + '-state').innerText = 'OFFLINE'; $(s + '-state').className = 'text-red-500 font-bold'; });
-          targetOpacity.left = targetOpacity.right = 0;
+          brainData.online = false; brainUpdate();
           return;
         }
 
         const g0 = m.gpus && m.gpus['0'], g1 = m.gpus && m.gpus['1'];
-        if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); targetOpacity.left = g0.load >= 5 ? Math.min(0.9, 0.15 + g0.load / 100) : 0; }
-        if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); targetOpacity.right = g1.load >= 5 ? Math.min(0.9, 0.15 + g1.load / 100) : 0; }
+        if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); }
+        if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); }
+        brainUpdate();
 
         // Aktives Modell: priorisiert dual (große Modelle), dann gpu0, gpu1
         const o = m.ollama || {};

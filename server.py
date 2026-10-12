@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PROM_URL = os.environ.get("LMPROM_URL", "http://192.168.178.22:9090")
@@ -23,7 +24,7 @@ OLLAMA_EP = {
     "gpu1": os.environ.get("LM_OLLAMA_GPU1", "https://rtx-gpu1.obsy.icu"),
     "dual": os.environ.get("LM_OLLAMA_DUAL", "https://rtx-dual.obsy.icu"),
 }
-TIMEOUT = float(os.environ.get("LM_TIMEOUT", "6"))
+TIMEOUT = float(os.environ.get("LM_TIMEOUT", "8"))   # Ollama antwortet unter Inferenzlast teils 2–4 s
 LOKI_URL = os.environ.get("LM_LOKI_URL", "http://localhost:3100")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
@@ -94,33 +95,37 @@ def get_gpus():
     return gpus
 
 
+def _ollama_one(key, base):
+    info = {"online": False}
+    try:
+        with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
+            info["version"] = json.load(r).get("version")
+            info["online"] = True
+        with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
+            ps = json.load(r)
+        sysinfo = ps.get("system_info") or {}
+        info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
+        models = []
+        for m in ps.get("models", []):
+            d = m.get("details", {})
+            models.append({
+                "name": m.get("name"),
+                "params": d.get("parameter_size"),
+                "quant": d.get("quantization_level"),
+                "ctx": m.get("context_length"),
+                "vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
+            })
+        info["models"] = models
+    except Exception:
+        pass
+    return key, info
+
+
 def get_ollama():
-    out = {}
-    for key, base in OLLAMA_EP.items():
-        info = {"online": False}
-        try:
-            with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
-                info["version"] = json.load(r).get("version")
-                info["online"] = True
-            with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
-                ps = json.load(r)
-            sysinfo = ps.get("system_info") or {}
-            info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
-            models = []
-            for m in ps.get("models", []):
-                d = m.get("details", {})
-                models.append({
-                    "name": m.get("name"),
-                    "params": d.get("parameter_size"),
-                    "quant": d.get("quantization_level"),
-                    "ctx": m.get("context_length"),
-                    "vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
-                })
-            info["models"] = models
-        except Exception:
-            pass
-        out[key] = info
-    return out
+    # Parallel: Ollama-Server unter Inferenzlast antworten teils langsam (2–4 s) →
+    # sequenziell würde /api/metrics auf 10+ s laufen und der Frontend-Poll (2 s) würde timeouten.
+    with ThreadPoolExecutor(max_workers=3) as ex:
+        return dict(ex.map(lambda kv: _ollama_one(*kv), OLLAMA_EP.items()))
 
 
 def build_metrics():
