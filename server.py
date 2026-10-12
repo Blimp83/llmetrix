@@ -166,6 +166,9 @@ def get_logs(gpu, limit=80):
 # ── Live t/s aus den Ollama-Logzeilen (llama.cpp print_timing) ─────────────
 _TG_RE = re.compile(r"n_gen\s*=\s*(\d+),\s*tg\s*=\s*([\d.]+)\s*t/s,\s*tg_3s\s*=\s*([\d.]+)\s*t/s")
 _PROMPT_RE = re.compile(r"prompt eval time\s*=\s*[\d.\s]+ms\s*/\s*(\d+)\s*tokens.*?([\d.]+)\s*tokens per second")
+# Aggregierte Eval-Zeile (kleine Batches, z. B. 1b-Modelle auf gpu0/gpu1 — dort fehlt die n_gen-Zeile):
+# "eval time =     246.19 ms /    67 tokens" → tps = tokens / ms
+_EVAL_RE = re.compile(r"(?<!prompt )(?<!total )eval time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens")
 
 
 def get_live_tps(gpu, window=900):
@@ -173,6 +176,7 @@ def get_live_tps(gpu, window=900):
 
     Punkte:
       kind=gen    → tg (Ø t/s der laufenden Generation), tg3s (Rolling 3s)
+                   Fallback: aggregierte "eval time"-Zeile → tps = tokens/ms
       kind=prompt → tps des Prompt-Evals (eigener Punkt, wird nicht gemischt)
     """
     try:
@@ -188,15 +192,26 @@ def get_live_tps(gpu, window=900):
                 if p:
                     pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "prompt",
                                 "tps": float(p.group(2))})
+                    continue
+                ev = _EVAL_RE.search(line)
+                if ev:
+                    ms, n_tok = float(ev.group(1)), int(ev.group(2))
+                    if ms > 0 and n_tok > 0:
+                        pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "gen",
+                                    "tg": round(n_tok / (ms / 1e3), 1), "tg3s": round(n_tok / (ms / 1e3), 1)})
         pts.sort(key=lambda x: x["t"])
         now = int(time.time())
         last_gen = next((p for p in reversed(pts) if p["kind"] == "gen"), None)
+        last_prompt = next((p for p in reversed(pts) if p["kind"] == "prompt"), None)
+        active = bool(last_gen and now - last_gen["t"] < 90)
+        if not active and last_prompt and now - last_prompt["t"] < 90:
+            active = True   # nur Prompt-Phase (Cold-Start) zählt auch als aktiv
         return {
             "gpu": gpu,
             "window_s": window,
             "count": len(pts),
             "points": pts,
-            "active": bool(last_gen and now - last_gen["t"] < 90),
+            "active": active,
             "current_tps": round(last_gen["tg"], 1) if last_gen else None,
         }
     except Exception as e:
