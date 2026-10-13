@@ -330,14 +330,14 @@
       if (!B.w || !B.h) return;
       brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
       const w = B.w, h = B.h;
-      // Gehirnkontur (Side-View, nach rechts): Einheitspunkte → Box
-      const U = [[0.50,0.98],[0.68,0.94],[0.82,0.82],[0.90,0.66],[0.94,0.48],[0.90,0.30],[0.78,0.16],[0.58,0.08],[0.38,0.08],[0.20,0.16],[0.10,0.32],[0.06,0.50],[0.10,0.68],[0.16,0.80],[0.28,0.88],[0.40,0.92]];
-      const bh = h * 0.94, bw = bh * 0.80, bx = w / 2 - bw / 2, by = (h - bh) / 2;
+      // Gehirnkontur (TOP-VIEW, wie Referenz): zwei Hemisphären nebeneinander, Mittelfurche
+      const U = [[0.06,0.42],[0.10,0.27],[0.21,0.14],[0.36,0.06],[0.46,0.05],[0.50,0.11],[0.54,0.05],[0.64,0.06],[0.79,0.14],[0.90,0.27],[0.94,0.42],[0.94,0.58],[0.90,0.73],[0.79,0.86],[0.64,0.94],[0.54,0.95],[0.50,0.89],[0.46,0.95],[0.36,0.94],[0.21,0.86],[0.10,0.73],[0.06,0.58]];
+      const bh = h * 0.92, bw = Math.min(bh * 1.55, w * 0.62), bx = w / 2 - bw / 2, by = (h - bh) / 2;
       const raw = U.map(p => ({ x: bx + p[0] * bw, y: by + p[1] * bh }));
       B.outline = catmullRom(raw, 14);
       // Mittellinie (DUAL): oberster/unterster Outline-Punkt nahe cx
       let cxTop = h, cxBot = 0;
-      for (const p of B.outline) { if (Math.abs(p.x - w / 2) < 3) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
+      for (const p of B.outline) { if (Math.abs(p.x - w / 2) < 4) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
       B.cxTop = cxTop; B.cxBot = cxBot;
 
       const cl = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -508,24 +508,28 @@
       }
       drawStreams(B.streamsL, aL, '0,240,255');
       drawStreams(B.streamsR, aR, '16,185,129');
-      // Mittellinie (DUAL / Tensor-Split)
+      // Mittellinie = Längsfurche (wie Referenz: dunkle Furche, bei DUAL leuchtend)
       const cx = w / 2;
+      // dunkle Furche (immer)
+      c.strokeStyle = 'rgba(2,6,15,0.75)'; c.lineWidth = 7; c.lineCap = 'round';
+      c.beginPath(); c.moveTo(cx, B.cxTop + 4); c.lineTo(cx, B.cxBot - 4); c.stroke();
+      c.strokeStyle = brainData.dual ? 'rgba(251,191,36,0.9)' : 'rgba(245,158,11,0.35)';
+      c.lineWidth = brainData.dual ? 2 : 1;
+      if (!brainData.dual) c.setLineDash([3, 6]);
+      c.beginPath(); c.moveTo(cx, B.cxTop + 6); c.lineTo(cx, B.cxBot - 6); c.stroke();
+      c.setLineDash([]);
       if (brainData.dual) {
-        const g = c.createLinearGradient(cx - 14, 0, cx + 14, 0);
+        // Glow links/rechts der Furche + Energie-Pulse
+        const g = c.createLinearGradient(cx - 12, 0, cx + 12, 0);
         g.addColorStop(0, 'rgba(245,158,11,0)');
-        g.addColorStop(0.5, 'rgba(245,158,11,' + (0.14 + 0.07 * Math.sin(t * 3)).toFixed(3) + ')');
+        g.addColorStop(0.5, 'rgba(255,237,180,' + (0.28 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
         g.addColorStop(1, 'rgba(245,158,11,0)');
-        c.fillStyle = g; c.fillRect(cx - 14, B.cxTop, 28, B.cxBot - B.cxTop);
-        c.strokeStyle = 'rgba(251,191,36,0.9)'; c.lineWidth = 1.4;
+        c.fillStyle = g; c.fillRect(cx - 12, B.cxTop, 24, B.cxBot - B.cxTop);
         for (let i = 0; i < 7; i++) {
           const y = B.cxTop + ((t * (26 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
+          c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.6;
           c.beginPath(); c.moveTo(cx, y); c.lineTo(cx, y + 7); c.stroke();
         }
-      } else {
-        c.strokeStyle = 'rgba(245,158,11,0.25)'; c.lineWidth = 1;
-        c.setLineDash([3, 5]);
-        c.beginPath(); c.moveTo(cx, B.cxTop); c.lineTo(cx, B.cxBot); c.stroke();
-        c.setLineDash([]);
       }
     }
 
