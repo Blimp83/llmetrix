@@ -330,130 +330,118 @@
       if (!B.w || !B.h) return;
       brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
       const w = B.w, h = B.h;
-      // ── Gehirnkontur (TOP-VIEW, wie Referenz): parametrisch mit Gyri-Buckeln ──
-      const bh = h * 0.90, bw = Math.min(bh * 1.52, w * 0.64), cx = w / 2, cy = h / 2;
-      function contourPt(a) {
-        let r = 1 + 0.045 * Math.cos(2 * a) + 0.030 * Math.cos(5 * a + 0.8) + 0.020 * Math.sin(7 * a + 2.1);
-        if (Math.abs(Math.sin(a)) < 0.16) r *= 0.975;   // Schläfen-Einbuchtung vorn/hinten
-        return { x: cx + Math.cos(a) * bw / 2 * r, y: cy + Math.sin(a) * bh / 2 * r };
-      }
-      const raw = [];
-      for (let i = 0; i < 120; i++) raw.push(contourPt(i / 120 * Math.PI * 2));
-      B.outline = catmullRom(raw, 3);
-      // Mittellinie (DUAL): oberster/unterster Outline-Punkt nahe cx
-      let cxTop = h, cxBot = 0;
-      for (const p of B.outline) { if (Math.abs(p.x - w / 2) < 4) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
-      B.cxTop = cxTop; B.cxBot = cxBot;
-      // ── Hemisphären-Pfade (Kontur + Mittellinie) → Clipping ──
-      const topP = raw[90], botP = raw[30];  // oberer/unterer Punkt
-      function hemiPath(side) {
-        const edge = side < 0 ? raw.slice(61, 90).reverse() : raw.slice(91, 120).concat(raw.slice(0, 30));
-        return [topP, ...edge, botP].map(p => ({ x: p.x + (side < 0 ? -1.5 : 1.5) * Math.sin(p.y / 7), y: p.y }));
-      }
-      B.hemiL = hemiPath(-1); B.hemiR = hemiPath(1);
-
       const cl = (v, a, b) => Math.max(a, Math.min(b, v));
-      const L = { x0: cx - bw * 0.46, x1: cx - bw * 0.025, y0: cy - bh * 0.40, y1: cy + bh * 0.40 };
-      const R = { x0: cx + bw * 0.025, x1: cx + bw * 0.46, y0: cy - bh * 0.40, y1: cy + bh * 0.40 };
-      // Traces enden direkt an der Kontur ("eingepasst")
-      function outlineNear(p) {
-        let best = null, bd = 1e9;
-        for (let i = 0; i < B.outline.length; i += 2) { const q = B.outline[i]; const d = Math.hypot(q.x - p.x, q.y - p.y); if (d < bd) { bd = d; best = q; } }
-        return best;
-      }
-      // Circuit-Trace: Manhattan-Routen (90°-Winkel) mit Pads
+      // ── Silhouette: Gehirn-Top-View (wie Referenz): zwei Hemisphären mit Lappen-Struktur, Portrait ──
+      const U = [
+        [0.50, 0.07], [0.59, 0.02], [0.70, 0.03], [0.80, 0.07], [0.88, 0.14], [0.94, 0.25],
+        [0.96, 0.37], [0.93, 0.47], [0.90, 0.54], [0.94, 0.64], [0.94, 0.75], [0.89, 0.85],
+        [0.80, 0.93], [0.68, 0.98], [0.56, 1.00], [0.50, 0.95],
+        [0.44, 1.00], [0.32, 0.98], [0.20, 0.93], [0.11, 0.85], [0.06, 0.75], [0.06, 0.64],
+        [0.10, 0.54], [0.07, 0.47], [0.04, 0.37], [0.06, 0.25], [0.12, 0.14], [0.20, 0.07],
+        [0.30, 0.03], [0.41, 0.02]
+      ];
+      const bh = h * 0.94, bw = bh * 0.78;   // Portrait wie Referenz
+      const cx = w / 2, cy = h / 2;
+      B.cx = cx; B.cy = cy; B.bw = bw; B.bh = bh;
+      const raw = U.map(p => ({ x: cx + (p[0] - 0.5) * bw, y: cy + (p[1] - 0.5) * bh }));
+      B.outline = catmullRom(raw, 8);
+      // Mittellinie: oberster/unterster Punkt nahe cx
+      let cxTop = h, cxBot = 0;
+      for (const p of B.outline) { if (Math.abs(p.x - cx) < 3) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
+      B.cxTop = cxTop; B.cxBot = cxBot;
+      // ── Hemisphären-Clipp-Pfade (Ober-Dip → Seite → Unter-Dip) ──
+      B.hemiR = catmullRom(raw.slice(0, 17), 8);
+      B.hemiL = catmullRom([raw[16], ...raw.slice(17), raw[0]], 8);
+
+      const L = { x0: cx - bw * 0.43, x1: cx - bw * 0.04, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
+      const R = { x0: cx + bw * 0.04, x1: cx + bw * 0.43, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
+      // ── GPU0 (links): PCB-Traces — gerade Linien mit 45°-Biegungen, Pads am Ende ──
       function circuitTrace(x0, y0, r) {
-        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0;
-        for (let i = 0; i < 5; i++) {
-          const tx = cl(x0 + (Math.random() - 0.5) * (r.x1 - r.x0), r.x0, r.x1);
-          const ty = cl(y0 + (Math.random() - 0.5) * (r.y1 - r.y0), r.y0, r.y1);
-          if (Math.random() < 0.5) { pts.push({ x: tx, y }); pts.push({ x: tx, y: ty }); } else { pts.push({ x, y: ty }); pts.push({ x: tx, y: ty }); }
-          x = tx; y = ty;
-        }
-        const e = outlineNear({ x, y });
-        pts.push({ x: cl(e.x, r.x0, r.x1), y: cl(e.y, r.y0, r.y1) });
-        return pts;
-      }
-      // Organischer Trace: weiche Nervenlinie
-      function organicTrace(x0, y0, r) {
-        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0, th = Math.random() * 6.28;
-        for (let i = 0; i < 15; i++) {
-          th += (Math.random() - 0.5) * 0.9;
-          const len = 7 + Math.random() * 8;
-          x = cl(x + Math.cos(th) * len, r.x0, r.x1);
-          y = cl(y + Math.sin(th) * len * 0.8, r.y0, r.y1);
+        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0, dir = Math.random() < 0.5 ? 1 : -1;
+        for (let i = 0; i < 3 + (Math.random() * 3 | 0); i++) {
+          const k = Math.random();
+          if (k < 0.52) x = cl(x + (14 + Math.random() * 28) * dir, r.x0, r.x1);
+          else if (k < 0.82) { const dy = Math.random() < 0.5 ? 1 : -1, len = 9 + Math.random() * 16; x = cl(x + len * dir, r.x0, r.x1); y = cl(y + len * dy, r.y0, r.y1); }
+          else y = cl(y + (10 + Math.random() * 20) * (Math.random() < 0.5 ? 1 : -1), r.y0, r.y1);
           pts.push({ x, y });
+          if (Math.random() < 0.35) dir *= -1;
         }
-        const e = outlineNear({ x, y });
-        pts.push({ x: cl(e.x, r.x0, r.x1), y: cl(e.y, r.y0, r.y1) });
         return pts;
       }
-      const rndPt = r => ({ x: r.x0 + Math.random() * (r.x1 - r.x0), y: r.y0 + Math.random() * (r.y1 - r.y0) });
+      // ── GPU1 (rechts): fließende Nervenkurven (S-Kurven von oben nach unten, wie Referenz) ──
+      function nerveCurve(r, short) {
+        const y0 = r.y0 + Math.random() * (r.y1 - r.y0) * (short ? 0.3 : 0.12);
+        const span = (r.y1 - r.y0) * (short ? 0.25 + Math.random() * 0.25 : 0.6 + Math.random() * 0.35);
+        const y1 = cl(y0 + span, r.y0, r.y1);
+        const x0 = r.x0 + Math.random() * (r.x1 - r.x0);
+        const x1 = r.x0 + Math.random() * (r.x1 - r.x0);
+        const c1 = { x: cl(x0 + (Math.random() - 0.5) * bw * 0.2, r.x0, r.x1), y: y0 + span * (0.15 + Math.random() * 0.25) };
+        const c2 = { x: cl(x1 + (Math.random() - 0.5) * bw * 0.2, r.x0, r.x1), y: y0 + span * (0.55 + Math.random() * 0.25) };
+        const pts = [];
+        for (let s = 0; s <= 22; s++) {
+          const u = s / 22, v = 1 - u;
+          pts.push({ x: v*v*v*x0 + 3*v*v*u*c1.x + 3*v*u*u*c2.x + u*u*u*x1, y: v*v*v*y0 + 3*v*v*u*c1.y + 3*v*u*u*c2.y + u*u*u*y1 });
+        }
+        return pts;
+      }
       B.hotL = []; B.hotR = [];
-      for (let i = 0; i < 34; i++) { const p = rndPt(L); B.hotL.push({ pts: circuitTrace(p.x, p.y, L), ph: Math.random() * 6.28, sp: 0.7 + Math.random() * 2.2 }); }
-      for (let i = 0; i < 30; i++) { const p = rndPt(R); B.hotR.push({ pts: organicTrace(p.x, p.y, R), ph: Math.random() * 6.28, sp: 0.7 + Math.random() * 2.2 }); }
-      // Interne Furchen (Sulci) — Gehirn-Optik
-      B.sulciL = [[cx - bw * 0.14, cy - bh * 0.30, cx - bw * 0.30, cy - bh * 0.05, cx - bw * 0.20, cy + bh * 0.26], [cx - bw * 0.38, cy - bh * 0.24, cx - bw * 0.46, cy + bh * 0.02, cx - bw * 0.34, cy + bh * 0.22]];
-      B.sulciR = [[cx + bw * 0.14, cy - bh * 0.30, cx + bw * 0.30, cy - bh * 0.05, cx + bw * 0.20, cy + bh * 0.26], [cx + bw * 0.38, cy - bh * 0.24, cx + bw * 0.46, cy + bh * 0.02, cx + bw * 0.34, cy + bh * 0.22]];
-      // ── Data-Streams (außen → Hirn / Hirn → außen) ──
-      function outlineNearest(side, yT) {
+      for (let i = 0; i < 30; i++) B.hotL.push({ pts: circuitTrace(L.x0 + Math.random() * (L.x1 - L.x0), L.y0 + Math.random() * (L.y1 - L.y0), L), ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
+      for (let i = 0; i < 14; i++) B.hotR.push({ pts: nerveCurve(R, false), sm: true, ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
+      for (let i = 0; i < 9; i++) B.hotR.push({ pts: nerveCurve(R, true), sm: true, ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
+
+      // ── Data-Streams (wie Referenz: links gerade Linien mit 45°-Anlauf, rechts fächernde Bögen) ──
+      function edgePoint(side, yT) {
         let best = null, bd = 1e9;
         for (const p of B.outline) {
-          if (side < 0 ? p.x > w / 2 : p.x < w / 2) continue;
+          if (side < 0 ? p.x > cx : p.x < cx) continue;
           const d = Math.abs(p.y - yT);
           if (d < bd) { bd = d; best = p; }
         }
-        return best || { x: side < 0 ? cx - bw * 0.2 : cx + bw * 0.2, y: cy };
+        return best || { x: cx + side * bw * 0.2, y: cy };
       }
       function bez(p0, p1, p2, p3, seg) {
         const out = [];
         for (let s = 0; s <= seg; s++) {
           const u = s / seg, v = 1 - u;
-          out.push({
-            x: v*v*v*p0.x + 3*v*v*u*p1.x + 3*v*u*u*p2.x + u*u*u*p3.x,
-            y: v*v*v*p0.y + 3*v*v*u*p1.y + 3*v*u*u*p2.y + u*u*u*p3.y,
-          });
+          out.push({ x: v*v*v*p0.x + 3*v*v*u*p1.x + 3*v*u*u*p2.x + u*u*u*p3.x, y: v*v*v*p0.y + 3*v*v*u*p1.y + 3*v*u*u*p2.y + u*u*u*p3.y });
         }
         return out;
       }
-      B.streamsL = []; B.streamsR = [];
-      for (let i = 0; i < 8; i++) {
-        const y0 = cy - bh / 2 + bh * (0.14 + 0.72 * i / 7) + (Math.random() * 16 - 8);
-        const tgtL = outlineNearest(-1, y0);
-        B.streamsL.push(bez({ x: -10, y: y0 }, { x: w * 0.2, y: y0 + (Math.random() - 0.5) * 50 }, { x: tgtL.x - 34, y: tgtL.y + (Math.random() - 0.5) * 24 }, tgtL, 26));
-        const y1 = cy - bh / 2 + bh * (0.14 + 0.72 * i / 7) + (Math.random() * 16 - 8);
-        const tgtR = outlineNearest(1, y1);
-        B.streamsR.push(bez(tgtR, { x: tgtR.x + 34, y: tgtR.y + (Math.random() - 0.5) * 24 }, { x: w * 0.8, y: y1 + (Math.random() - 0.5) * 50 }, { x: w + 10, y: y1 }, 26));
+      B.streamsL = [];
+      for (let i = 0; i < 11; i++) {
+        const y = cy - bh * 0.42 + bh * 0.84 * (i / 10) + (Math.random() * 12 - 6);
+        const e = edgePoint(-1, y);
+        // wie Referenz: teils kurze Stubs, teils volle Länge; 45°-Anlauf zur Kante
+        const xStart = Math.random() < 0.3 ? w * (0.08 + Math.random() * 0.12) : -12;
+        const pts = [{ x: xStart, y }];
+        if (Math.random() < 0.75) { const dy = (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18); pts.push({ x: e.x - 34, y }); pts.push({ x: e.x - 20, y: cl(y + dy, 4, h - 4) }); }
+        pts.push({ x: e.x, y: e.y });
+        B.streamsL.push({ path: pts, node: { x: e.x, y: e.y } });
       }
-      // ── Statische Textur: Traces (geclippt in die Hemisphären) + Sulci + Outline ──
+      B.streamsR = [];
+      for (let i = 0; i < 9; i++) {
+        const y = cy - bh * 0.40 + bh * 0.80 * (i / 8) + (Math.random() * 12 - 6);
+        const e = edgePoint(1, y);
+        const sp = (e.y - cy) / bh;   // obere Bögen krümmen nach oben, untere nach unten
+        B.streamsR.push({ path: bez(e, { x: e.x + 44, y: e.y - sp * 26 }, { x: w * 0.86, y: e.y - sp * (95 + Math.random() * 60) }, { x: w + 12, y: e.y - sp * 130 }, 30), node: { x: e.x, y: e.y } });
+      }
+
+      // ── Statische Textur: Traces (geclippt in Hemisphären) + Pads + Outline ──
       const tex = document.createElement('canvas');
       tex.width = brainCanvas.width; tex.height = brainCanvas.height;
       const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
       function strokePath(pts) { tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.stroke(); }
-      function hemiClip(pts) {
-        tc.save();
-        tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.closePath(); tc.clip();
-      }
-      // Hemisphären-Innenleuchten
-      tc.lineWidth = 14; tc.strokeStyle = 'rgba(0,240,255,0.035)'; strokePath(B.hemiL);
-      tc.lineWidth = 14; tc.strokeStyle = 'rgba(16,185,129,0.035)'; strokePath(B.hemiR);
-      // GPU0 (links): Circuit-Traces geclippt
+      function strokeSmooth(pts) { tc.beginPath(); tc.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2; tc.quadraticCurveTo(pts[i].x, pts[i].y, mx, my); } tc.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y); tc.stroke(); }
+      function hemiClip(pts) { tc.save(); tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.closePath(); tc.clip(); }
+      // GPU0 (links): PCB-Traces + Pads
       hemiClip(B.hemiL);
-      tc.lineWidth = 1;
-      tc.strokeStyle = 'rgba(0,240,255,0.30)';
-      for (const tr of B.hotL) strokePath(tr.pts);
-      for (const tr of B.hotL) { const e = tr.pts[tr.pts.length - 1]; tc.fillStyle = 'rgba(0,240,255,0.35)'; tc.beginPath(); tc.arc(e.x, e.y, 1.6, 0, 6.29); tc.fill(); }
-      // Sulci links
-      tc.lineWidth = 1; tc.strokeStyle = 'rgba(148,233,255,0.10)';
-      for (const s of B.sulciL) { tc.beginPath(); tc.moveTo(s[0], s[1]); tc.quadraticCurveTo(s[2], s[3], s[4], s[5]); tc.stroke(); }
+      tc.lineWidth = 1; tc.strokeStyle = 'rgba(0,240,255,0.26)';
+      for (const tr of B.hotL) { strokePath(tr.pts); const e = tr.pts[tr.pts.length - 1]; tc.fillStyle = 'rgba(0,240,255,0.4)'; tc.beginPath(); tc.arc(e.x, e.y, 1.5, 0, 6.29); tc.fill(); }
       tc.restore();
-      // GPU1 (rechts): organische Traces geclippt
+      // GPU1 (rechts): Nervenkurven
       hemiClip(B.hemiR);
-      tc.lineWidth = 1;
-      tc.strokeStyle = 'rgba(16,185,129,0.32)';
-      for (const tr of B.hotR) strokePath(tr.pts);
-      tc.strokeStyle = 'rgba(167,243,208,0.10)';
-      for (const s of B.sulciR) { tc.beginPath(); tc.moveTo(s[0], s[1]); tc.quadraticCurveTo(s[2], s[3], s[4], s[5]); tc.stroke(); }
+      tc.lineWidth = 1; tc.strokeStyle = 'rgba(16,185,129,0.30)';
+      for (const tr of B.hotR) strokeSmooth(tr.pts);
       tc.restore();
       // Outline: Glow + Linie
       tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(B.outline.concat([B.outline[0]]));
@@ -510,71 +498,74 @@
       // Statische Textur (Traces + Outline)
       if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
       // Hot-Traces: leuchtende Segmente + Pads ∝ Aktivität (geclippt in die Hemisphären)
-      function drawHot(list, act, rgb, hemi) {
+      function drawHot(list, act, rgb, hemi, smooth) {
         c.save();
         c.beginPath(); hemi.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.closePath(); c.clip();
         for (const tr of list) {
           const b = act * (0.45 + 0.55 * Math.sin(t * tr.sp + tr.ph));
           if (b < 0.06) continue;
-          c.strokeStyle = 'rgba(' + rgb + ',' + (b * 0.28).toFixed(3) + ')'; c.lineWidth = 3.5;
-          c.beginPath(); tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.stroke();
-          c.strokeStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')'; c.lineWidth = 1.2;
-          c.beginPath(); tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.stroke();
+          function path() {
+            c.beginPath();
+            if (smooth) { c.moveTo(tr.pts[0].x, tr.pts[0].y); for (let i = 1; i < tr.pts.length - 1; i++) { const mx = (tr.pts[i].x + tr.pts[i + 1].x) / 2, my = (tr.pts[i].y + tr.pts[i + 1].y) / 2; c.quadraticCurveTo(tr.pts[i].x, tr.pts[i].y, mx, my); } c.lineTo(tr.pts[tr.pts.length - 1].x, tr.pts[tr.pts.length - 1].y); }
+            else tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+          }
+          c.strokeStyle = 'rgba(' + rgb + ',' + (b * 0.25).toFixed(3) + ')'; c.lineWidth = 3.5; path(); c.stroke();
+          c.strokeStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')'; c.lineWidth = 1.2; path(); c.stroke();
           const e = tr.pts[tr.pts.length - 1];
           c.fillStyle = 'rgba(' + rgb + ',' + Math.min(1, b * 1.2).toFixed(3) + ')';
           c.beginPath(); c.arc(e.x, e.y, 1.5 + b * 1.6, 0, 6.29); c.fill();
         }
         c.restore();
       }
-      drawHot(B.hotL, aL, '0,240,255', B.hemiL);
-      drawHot(B.hotR, aR, '16,185,129', B.hemiR);
-      // Data-Streams: Partikel entlang der Pfade (links herein = GPU0-In, rechts heraus = GPU1-Out)
-      function drawStreams(paths, act, rgb) {
+      drawHot(B.hotL, aL, '0,240,255', B.hemiL, false);
+      drawHot(B.hotR, aR, '16,185,129', B.hemiR, true);
+      // Data-Streams (wie Referenz): links gerade Linien mit leuchtenden Knoten an der Kante,
+      // rechts fächernde Bögen nach außen
+      function drawStreamSet(set, act, rgb) {
         if (act < 0.12) return;
-        for (let i = 0; i < paths.length; i++) {
-          const path = paths[i], nP = 2 + (i % 2);
-          for (let k = 0; k < nP; k++) {
-            if (!path._p) path._p = [];
-            while (path._p.length < nP) path._p.push(Math.random());
-            for (let j = 0; j < nP; j++) {
-              let tt = path._p[j] + dt * (0.16 + act * 0.3) * (1 + 0.3 * Math.sin(i * 2.7 + k));
-              if (tt >= 1) tt -= 1;
-              path._p[j] = tt;
-              const idx = tt * (path.length - 1), i0 = Math.floor(idx), fr = idx - i0;
-              const pA = path[i0], pB = path[Math.min(path.length - 1, i0 + 1)];
-              const x = pA.x + (pB.x - pA.x) * fr, y = pA.y + (pB.y - pA.y) * fr;
-              const q = path[Math.max(0, i0 - 3)];
-              c.strokeStyle = 'rgba(' + rgb + ',' + (0.5 * act).toFixed(3) + ')'; c.lineWidth = 1.6;
-              c.beginPath(); c.moveTo(q.x, q.y); c.lineTo(x, y); c.stroke();
-              c.fillStyle = 'rgba(255,255,255,' + (0.75 * act).toFixed(3) + ')';
-              c.beginPath(); c.arc(x, y, 1.7, 0, 6.29); c.fill();
-            }
+        for (const s of set) {
+          const pts = s.path, nP = 1 + ((s.node.x * 7 + s.node.y * 13) % 2);
+          if (!s._p) s._p = [];
+          while (s._p.length < nP) s._p.push(Math.random());
+          for (let j = 0; j < nP; j++) {
+            let tt = s._p[j] + dt * (0.14 + act * 0.25);
+            if (tt >= 1) tt -= 1;
+            s._p[j] = tt;
+            const idx = tt * (pts.length - 1), i0 = Math.floor(idx), fr = idx - i0;
+            const pA = pts[i0], pB = pts[Math.min(pts.length - 1, i0 + 1)];
+            const x = pA.x + (pB.x - pA.x) * fr, y = pA.y + (pB.y - pA.y) * fr;
+            const q = pts[Math.max(0, i0 - 4)];
+            c.strokeStyle = 'rgba(' + rgb + ',' + (0.65 * act).toFixed(3) + ')'; c.lineWidth = 1.7;
+            c.beginPath(); c.moveTo(q.x, q.y); c.lineTo(x, y); c.stroke();
+            c.fillStyle = 'rgba(255,255,255,' + (0.8 * act).toFixed(3) + ')';
+            c.beginPath(); c.arc(x, y, 1.6, 0, 6.29); c.fill();
           }
+          // leuchtender Knoten an der Kante (wie Referenz)
+          const n = s.node, pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + n.x * 0.1);
+          c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.5 + 0.4 * pulse)).toFixed(3) + ')';
+          c.beginPath(); c.arc(n.x, n.y, 2.2 + pulse * 1.4, 0, 6.29); c.fill();
+          c.fillStyle = 'rgba(255,255,255,' + (act * (0.6 + 0.3 * pulse)).toFixed(3) + ')';
+          c.beginPath(); c.arc(n.x, n.y, 1.1, 0, 6.29); c.fill();
         }
       }
-      drawStreams(B.streamsL, aL, '0,240,255');
-      drawStreams(B.streamsR, aR, '16,185,129');
-      // Mittellinie = Längsfurche (wie Referenz: dunkle Furche, bei DUAL leuchtend)
-      const cx = w / 2;
-      // dunkle Furche (immer)
-      c.strokeStyle = 'rgba(2,6,15,0.75)'; c.lineWidth = 7; c.lineCap = 'round';
-      c.beginPath(); c.moveTo(cx, B.cxTop + 4); c.lineTo(cx, B.cxBot - 4); c.stroke();
-      c.strokeStyle = brainData.dual ? 'rgba(251,191,36,0.9)' : 'rgba(245,158,11,0.35)';
-      c.lineWidth = brainData.dual ? 2 : 1;
-      if (!brainData.dual) c.setLineDash([3, 6]);
-      c.beginPath(); c.moveTo(cx, B.cxTop + 6); c.lineTo(cx, B.cxBot - 6); c.stroke();
-      c.setLineDash([]);
+      drawStreamSet(B.streamsL, aL, '0,240,255');
+      drawStreamSet(B.streamsR, aR, '16,185,129');
+      // Mittellinie = Längsfurche (wie Referenz: helle weiße Linie)
+      const cxm = B.cx;
+      c.lineCap = 'round';
+      c.strokeStyle = 'rgba(226,240,253,0.85)'; c.lineWidth = 1.6;
+      c.beginPath(); c.moveTo(cxm, B.cxTop + 5); c.lineTo(cxm, B.cxBot - 5); c.stroke();
       if (brainData.dual) {
-        // Glow links/rechts der Furche + Energie-Pulse
-        const g = c.createLinearGradient(cx - 12, 0, cx + 12, 0);
+        // DUAL: amber Glow + Energie-Pulse
+        const g = c.createLinearGradient(cxm - 13, 0, cxm + 13, 0);
         g.addColorStop(0, 'rgba(245,158,11,0)');
-        g.addColorStop(0.5, 'rgba(255,237,180,' + (0.28 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
+        g.addColorStop(0.5, 'rgba(255,237,180,' + (0.30 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
         g.addColorStop(1, 'rgba(245,158,11,0)');
-        c.fillStyle = g; c.fillRect(cx - 12, B.cxTop, 24, B.cxBot - B.cxTop);
+        c.fillStyle = g; c.fillRect(cxm - 13, B.cxTop, 26, B.cxBot - B.cxTop);
         for (let i = 0; i < 7; i++) {
-          const y = B.cxTop + ((t * (26 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
+          const y = B.cxTop + ((t * (24 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
           c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.6;
-          c.beginPath(); c.moveTo(cx, y); c.lineTo(cx, y + 7); c.stroke();
+          c.beginPath(); c.moveTo(cxm, y); c.lineTo(cxm, y + 7); c.stroke();
         }
       }
     }
