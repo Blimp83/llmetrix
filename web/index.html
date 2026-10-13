@@ -100,7 +100,6 @@
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-cyan-500/20 pt-2">
         <div class="text-[10px] font-mono text-cyan-200/90 truncate" id="gpu0-chip" title="Modell auf GPU 0">CHIP: --</div>
-        <div>SYNAPSE: <span id="gpu0-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
       </div>
     </div>
 
@@ -186,7 +185,6 @@
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-emerald-500/20 pt-2">
         <div class="text-[10px] font-mono text-emerald-200/90 truncate" id="gpu1-chip" title="Modell auf GPU 1">CHIP: --</div>
-        <div>SYNAPSE: <span id="gpu1-state" class="text-slate-500 font-bold">AWAITING LINK</span></div>
       </div>
     </div>
   </div>
@@ -595,10 +593,6 @@
       }
       if (g.temp_c != null) $(slot + '-temp').innerText = Math.round(g.temp_c);
       if (g.power_w != null) $(slot + '-power').innerText = Math.round(g.power_w);
-      const st = $(slot + '-state');
-      if (load <= 5) { st.innerText = "NEURONS ONLY"; st.className = "text-slate-500 font-bold"; }
-      else if (load >= 95) { st.innerText = "SOLID SYNAPSES (100%)"; st.className = "text-amber-400 font-bold animate-pulse"; }
-      else { st.innerText = "SYNAPTIC FLICKER"; st.className = (slot === 'gpu0' ? "text-cyan-400" : "text-emerald-400") + " font-bold"; }
     }
 
     function setCore(source, model) {
@@ -757,7 +751,6 @@
 
         if (!m.ai_server_online) {
           log('[OFFLINE]: AI Server (.40) nicht erreichbar — Wake-on-LAN via Nap-Gateway möglich.', 'text-red-400');
-          ['gpu0', 'gpu1'].forEach(s => { $(s + '-state').innerText = 'OFFLINE'; $(s + '-state').className = 'text-red-500 font-bold'; });
           brainData.online = false; brainUpdate();
           return;
         }
