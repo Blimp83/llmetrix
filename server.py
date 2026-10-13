@@ -95,29 +95,63 @@ def get_gpus():
     return gpus
 
 
+# ── Ollama /api/ps-Cache: unter Inferenz-Lust antwortet /api/ps teils leer/zeitüberschritten ──
+# → letzter bekannt guter Stand wird vorgehalten (bis 60 s), damit das Dashboard nicht flackert.
+_ps_cache = {}
+_ps_cache_lock = threading.Lock()
+PS_CACHE_TTL = 60.0
+
+
+def _ps_models_fresh(base, gpu):
+    """/api/ps mit Retry + Cache-Fallback (unter Inferenz-Lust teils leer). Liefert (models_raw, sysinfo, stale)."""
+    models_raw, sysinfo = [], {}
+    try:
+        for attempt in range(2):
+            with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
+                ps = json.load(r)
+            models_raw = ps.get("models") or []
+            sysinfo = ps.get("system_info") or {}
+            if models_raw:
+                break
+            time.sleep(0.4)
+    except Exception:
+        pass
+    if models_raw:
+        with _ps_cache_lock:
+            _ps_cache[gpu] = (time.time(), (models_raw, sysinfo))
+    else:
+        with _ps_cache_lock:
+            hit = _ps_cache.get(gpu)
+        if hit and time.time() - hit[0] < PS_CACHE_TTL:
+            models_raw, sysinfo = hit[1]
+            return models_raw, sysinfo, True
+    return models_raw, sysinfo, False
+
+
 def _ollama_one(key, base):
     info = {"online": False}
     try:
         with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
             info["version"] = json.load(r).get("version")
             info["online"] = True
-        with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
-            ps = json.load(r)
-        sysinfo = ps.get("system_info") or {}
-        info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
-        models = []
-        for m in ps.get("models", []):
-            d = m.get("details", {})
-            models.append({
-                "name": m.get("name"),
-                "params": d.get("parameter_size"),
-                "quant": d.get("quantization_level"),
-                "ctx": m.get("context_length"),
-                "vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
-            })
-        info["models"] = models
     except Exception:
         pass
+    models_raw, sysinfo, stale = _ps_models_fresh(base, key)
+    info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
+    models = []
+    for m in models_raw:
+        d = m.get("details", {})
+        models.append({
+            "name": m.get("name"),
+            "params": d.get("parameter_size"),
+            "quant": d.get("quantization_level"),
+            "ctx": m.get("context_length"),
+            "vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
+        })
+    if models:
+        info["models"] = models
+    if stale and models:
+        info["models_stale"] = True
     return key, info
 
 
@@ -247,13 +281,14 @@ def get_model_info(gpu):
     if not base:
         return out
     try:
-        with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
-            ps = json.load(r)
+        with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
+            json.load(r)
         out["online"] = True
     except Exception as e:
         out["error"] = str(e)
         return out
-    for m in ps.get("models", []):  # letztes Array-Element = zuletzt geladen
+    models_raw, _sysinfo, _stale = _ps_models_fresh(base, gpu)
+    for m in models_raw:  # letztes Array-Element = zuletzt geladen
         name = m.get("name")
         rec = {
             "name": name,

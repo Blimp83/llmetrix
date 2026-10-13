@@ -62,14 +62,14 @@
     <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
     <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-4 rounded-lg space-y-2 pointer-events-auto">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 gap-2 flex-wrap">
-        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ACTIVITY // BRAIN MAP</span><span class="text-[10px] text-slate-500">GPU 0 (L) · DUAL (CALLOSUM) · GPU 1 (R)</span></span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ACTIVITY // BRAIN MAP</span><span class="text-[10px] text-slate-500">GPU 0 (LINKS) · DUAL (MITTE) · GPU 1 (RECHTS)</span></span>
         <span class="flex items-center gap-3 text-[10px] font-mono">
           <span class="text-cyan-300" id="brain-g0">GPU0: --</span>
           <span id="brain-dual" class="text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900">DUAL: IDLE</span>
           <span class="text-emerald-300" id="brain-g1">GPU1: --</span>
         </span>
       </div>
-      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:200px"></canvas>
+      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:240px"></canvas>
     </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
@@ -306,60 +306,129 @@
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, neuronsL: [], neuronsR: [], edgesL: [], edgesR: [], tex: null, partsL: [], partsR: [] };
+    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, rain: null, hotL: [], hotR: [], streamsL: [], streamsR: [] };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
+
+    function catmullRom(pts, seg) {
+      const out = [], n = pts.length;
+      for (let i = 0; i < n; i++) {
+        const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
+        for (let s = 0; s < seg; s++) {
+          const u = s / seg, u2 = u * u, u3 = u2 * u;
+          out.push({
+            x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * u + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * u2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * u3),
+            y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * u + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * u2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * u3),
+          });
+        }
+      }
+      return out;
+    }
 
     function buildBrain() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
       B.w = brainCanvas.clientWidth; B.h = brainCanvas.clientHeight;
       if (!B.w || !B.h) return;
       brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
-      const cx0 = B.w / 2, cy = B.h / 2, hw = Math.min(B.w * 0.46, B.h * 1.9), ry = B.h * 0.36;
-      const N = 300;
-      function makeNeurons(sign) {
-        const cx = cx0 + sign * hw * 0.56, rx = hw * 0.44;
-        const pts = []; let guard = 0;
-        while (pts.length < N && guard++ < N * 50) {
-          const u = Math.random() * 2 - 1, v = Math.random() * 2 - 1;
-          if (u * u + v * v > 1) continue;
-          pts.push({ x: cx + rx * u, y: cy + ry * v, p1: Math.random() * 6.28, p2: Math.random() * 6.28, s1: 0.6 + Math.random() * 2.4, s2: 0.5 + Math.random() * 1.8 });
+      const w = B.w, h = B.h;
+      // Gehirnkontur (Side-View, nach rechts): Einheitspunkte → Box
+      const U = [[0.50,0.98],[0.68,0.94],[0.82,0.82],[0.90,0.66],[0.94,0.48],[0.90,0.30],[0.78,0.16],[0.58,0.08],[0.38,0.08],[0.20,0.16],[0.10,0.32],[0.06,0.50],[0.10,0.68],[0.16,0.80],[0.28,0.88],[0.40,0.92]];
+      const bh = h * 0.94, bw = bh * 0.80, bx = w / 2 - bw / 2, by = (h - bh) / 2;
+      const raw = U.map(p => ({ x: bx + p[0] * bw, y: by + p[1] * bh }));
+      B.outline = catmullRom(raw, 14);
+      // Mittellinie (DUAL): oberster/unterster Outline-Punkt nahe cx
+      let cxTop = h, cxBot = 0;
+      for (const p of B.outline) { if (Math.abs(p.x - w / 2) < 3) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
+      B.cxTop = cxTop; B.cxBot = cxBot;
+
+      const cl = (v, a, b) => Math.max(a, Math.min(b, v));
+      // ── Traces generieren ──
+      function circuitTrace(x0, y0, rx0, rx1, ry0, ry1) {
+        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0;
+        let horiz = Math.random() < 0.5;
+        const steps = 4 + (Math.random() * 4 | 0);
+        for (let i = 0; i < steps; i++) {
+          const len = 10 + Math.random() * 26, dir = Math.random() < 0.5 ? 1 : -1;
+          if (horiz) x += len * dir; else y += len * dir;
+          pts.push({ x: cl(x, rx0, rx1), y: cl(y, ry0, ry1) });
+          horiz = !horiz;
         }
         return pts;
       }
-      B.neuronsL = makeNeurons(-1); B.neuronsR = makeNeurons(1);
-      function edges(pts) {
+      function organicTrace(x0, y0, rx0, rx1, ry0, ry1) {
+        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0, th = Math.random() * 6.28;
+        for (let i = 0; i < 15; i++) {
+          th += (Math.random() - 0.5) * 0.9;
+          const len = 7 + Math.random() * 8;
+          x = cl(x + Math.cos(th) * len, rx0, rx1);
+          y = cl(y + Math.sin(th) * len * 0.8, ry0, ry1);
+          pts.push({ x, y });
+        }
+        return pts;
+      }
+      const L = { x0: bx + bw * 0.07, x1: w / 2 - bw * 0.04, y0: by + bh * 0.14, y1: by + bh * 0.86 };
+      const R = { x0: w / 2 + bw * 0.04, x1: bx + bw * 0.93, y0: by + bh * 0.14, y1: by + bh * 0.86 };
+      const rndPt = r => ({ x: r.x0 + Math.random() * (r.x1 - r.x0), y: r.y0 + Math.random() * (r.y1 - r.y0) });
+      B.hotL = []; B.hotR = [];
+      for (let i = 0; i < 46; i++) { const p = rndPt(L); B.hotL.push({ pts: circuitTrace(p.x, p.y, L.x0, L.x1, L.y0, L.y1), ph: Math.random() * 6.28, sp: 0.7 + Math.random() * 2.2 }); }
+      for (let i = 0; i < 40; i++) { const p = rndPt(R); B.hotR.push({ pts: organicTrace(p.x, p.y, R.x0, R.x1, R.y0, R.y1), ph: Math.random() * 6.28, sp: 0.7 + Math.random() * 2.2 }); }
+      // ── Data-Streams (außen → Hirn / Hirn → außen) ──
+      function outlineNearest(side, yT) {
+        let best = null, bd = 1e9;
+        for (const p of B.outline) {
+          if (side < 0 ? p.x > w / 2 : p.x < w / 2) continue;
+          const d = Math.abs(p.y - yT);
+          if (d < bd) { bd = d; best = p; }
+        }
+        return best || { x: side < 0 ? bx + bw * 0.3 : bx + bw * 0.7, y: by + bh / 2 };
+      }
+      function bez(p0, p1, p2, p3, seg) {
         const out = [];
-        for (let i = 0; i < pts.length; i++) {
-          const d = [];
-          for (let j = 0; j < pts.length; j++) if (j !== i) d.push([Math.hypot(pts[i].x - pts[j].x, pts[i].y - pts[j].y), j]);
-          d.sort((a, b) => a[0] - b[0]);
-          out.push([i, d[0][1]], [i, d[1][1]]);
+        for (let s = 0; s <= seg; s++) {
+          const u = s / seg, v = 1 - u;
+          out.push({
+            x: v*v*v*p0.x + 3*v*v*u*p1.x + 3*v*u*u*p2.x + u*u*u*p3.x,
+            y: v*v*v*p0.y + 3*v*v*u*p1.y + 3*v*u*u*p2.y + u*u*u*p3.y,
+          });
         }
         return out;
       }
-      B.edgesL = edges(B.neuronsL); B.edgesR = edges(B.neuronsR);
-      B.partsL = []; B.partsR = [];
-      // Statische Textur: Gyri-Linien + Hemisphären-Outline (einmalig pro Resize)
+      B.streamsL = []; B.streamsR = [];
+      for (let i = 0; i < 8; i++) {
+        const y0 = by + bh * (0.14 + 0.72 * i / 7) + (Math.random() * 16 - 8);
+        const tgtL = outlineNearest(-1, y0);
+        B.streamsL.push(bez({ x: -10, y: y0 }, { x: w * 0.2, y: y0 + (Math.random() - 0.5) * 50 }, { x: tgtL.x - 34, y: tgtL.y + (Math.random() - 0.5) * 24 }, tgtL, 26));
+        const y1 = by + bh * (0.14 + 0.72 * i / 7) + (Math.random() * 16 - 8);
+        const tgtR = outlineNearest(1, y1);
+        B.streamsR.push(bez(tgtR, { x: tgtR.x + 34, y: tgtR.y + (Math.random() - 0.5) * 24 }, { x: w * 0.8, y: y1 + (Math.random() - 0.5) * 50 }, { x: w + 10, y: y1 }, 26));
+      }
+      // ── Statische Textur: Traces + Outline ──
       const tex = document.createElement('canvas');
       tex.width = brainCanvas.width; tex.height = brainCanvas.height;
       const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
-      [-1, 1].forEach(sign => {
-        const cx = cx0 + sign * hw * 0.56, rx = hw * 0.44;
-        tc.strokeStyle = 'rgba(148,163,184,0.09)'; tc.lineWidth = 1;
-        for (let k = -3; k <= 3; k++) {
-          tc.beginPath();
-          for (let s = 0; s <= 40; s++) {
-            const u = s / 40 * 2 - 1;
-            const x = cx + rx * u * 0.92;
-            const y = cy + ry * k / 3.5 * Math.sqrt(Math.max(0, 1 - u * u)) + Math.sin(u * 7 + k * 1.7) * 2.5;
-            s === 0 ? tc.moveTo(x, y) : tc.lineTo(x, y);
-          }
-          tc.stroke();
-        }
-        tc.strokeStyle = sign < 0 ? 'rgba(0,240,255,0.18)' : 'rgba(16,185,129,0.18)';
-        tc.beginPath(); tc.ellipse(cx, cy, rx * 1.02, ry * 1.02, 0, 0, 6.29); tc.stroke();
-      });
+      function strokePath(pts) { tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.stroke(); }
+      tc.lineWidth = 1;
+      tc.strokeStyle = 'rgba(0,240,255,0.30)';
+      for (const tr of B.hotL) strokePath(tr.pts);
+      for (const tr of B.hotL) { const e = tr.pts[tr.pts.length - 1]; tc.fillStyle = 'rgba(0,240,255,0.35)'; tc.beginPath(); tc.arc(e.x, e.y, 1.6, 0, 6.29); tc.fill(); }
+      tc.strokeStyle = 'rgba(16,185,129,0.32)';
+      for (const tr of B.hotR) strokePath(tr.pts);
+      // Outline: Glow + Linie
+      tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(B.outline.concat([B.outline[0]]));
+      tc.lineWidth = 1.4; tc.strokeStyle = 'rgba(186,230,253,0.55)'; strokePath(B.outline.concat([B.outline[0]]));
       B.tex = tex;
+      // ── Binär-Regen-Textur (scrollt) ──
+      const rain = document.createElement('canvas');
+      rain.width = brainCanvas.width; rain.height = brainCanvas.height * 2;
+      const rc = rain.getContext('2d'); rc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      rc.font = '9px monospace';
+      for (let x = 6; x < w; x += 13) {
+        for (let y = 8; y < h * 2; y += 12) {
+          const a = 0.02 + Math.random() * 0.09;
+          rc.fillStyle = Math.random() < 0.12 ? 'rgba(165,243,252,' + (a * 1.8).toFixed(3) + ')' : 'rgba(125,211,252,' + a.toFixed(3) + ')';
+          rc.fillText(Math.random() < 0.5 ? '0' : '1', x, y);
+        }
+      }
+      B.rain = rain;
     }
 
     function brainUpdate() {
@@ -377,77 +446,86 @@
       else { bd.innerText = 'DUAL: IDLE'; bd.className = 'text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900'; }
     }
 
+    let brainLast = 0;
     function brainFrame(now) {
       requestAnimationFrame(brainFrame);
       const c = brainCanvas.getContext('2d');
       const w = B.w, h = B.h; if (!w || !h) return;
       const t = now / 1000;
+      const dt = Math.min(0.05, (now - brainLast) / 1000 || 0.016); brainLast = now;
       c.clearRect(0, 0, w, h);
-      if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
-      const d = brainData;
-      // Aktivität: Load als Basis; aktive Inferenz (t/s) zündet die Hemisphäre;
-      // DUAL (Tensor-Split) aktiv → beide Hemisphären feuern mit
-      let actL = d.online ? 0.95 * (d.load0 / 100) : 0;
-      let actR = d.online ? 0.95 * (d.load1 / 100) : 0;
-      if (d.tps0 > 0) actL = Math.max(actL, 0.8);
-      if (d.tps1 > 0) actR = Math.max(actR, 0.8);
-      if (d.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
-      const idle = 0.06 + 0.03 * Math.sin(t * 0.8);   // Idle-Atmen
+      // Binär-Regen (scrollt langsam)
+      if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h); c.drawImage(B.rain, 0, off); }
+      // Aktivität: Load als Basis; aktive Inferenz zündet die Hälfte; DUAL → beide
+      let actL = brainData.online ? 0.95 * (brainData.load0 / 100) : 0;
+      let actR = brainData.online ? 0.95 * (brainData.load1 / 100) : 0;
+      if (brainData.tps0 > 0) actL = Math.max(actL, 0.8);
+      if (brainData.tps1 > 0) actR = Math.max(actR, 0.8);
+      if (brainData.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
+      const idle = 0.06 + 0.03 * Math.sin(t * 0.8);
       const aL = Math.max(idle, actL), aR = Math.max(idle, actR);
-      function drawEdges(pts, es, alpha) {
-        c.strokeStyle = 'rgba(148,163,184,' + alpha.toFixed(3) + ')';
-        c.beginPath();
-        for (const e of es) { c.moveTo(pts[e[0]].x, pts[e[0]].y); c.lineTo(pts[e[1]].x, pts[e[1]].y); }
-        c.stroke();
-      }
-      drawEdges(B.neuronsL, B.edgesL, aL * 0.16);
-      drawEdges(B.neuronsR, B.edgesR, aR * 0.16);
-      function drawNeurons(pts, act, rgb) {
-        for (const n of pts) {
-          const f = 0.5 + 0.5 * Math.sin(t * n.s1 + n.p1);
-          const b = act * f;
-          if (b < 0.03) continue;
-          c.fillStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')';
-          c.beginPath(); c.arc(n.x, n.y, 1 + b * 1.8, 0, 6.29); c.fill();
+      // Statische Textur (Traces + Outline)
+      if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
+      // Hot-Traces: leuchtende Segmente + Pads ∝ Aktivität
+      function drawHot(list, act, rgb) {
+        for (const tr of list) {
+          const b = act * (0.45 + 0.55 * Math.sin(t * tr.sp + tr.ph));
+          if (b < 0.06) continue;
+          c.strokeStyle = 'rgba(' + rgb + ',' + (b * 0.28).toFixed(3) + ')'; c.lineWidth = 3.5;
+          c.beginPath(); tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.stroke();
+          c.strokeStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')'; c.lineWidth = 1.2;
+          c.beginPath(); tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.stroke();
+          const e = tr.pts[tr.pts.length - 1];
+          c.fillStyle = 'rgba(' + rgb + ',' + Math.min(1, b * 1.2).toFixed(3) + ')';
+          c.beginPath(); c.arc(e.x, e.y, 1.5 + b * 1.6, 0, 6.29); c.fill();
         }
       }
-      drawNeurons(B.neuronsL, aL, '0,240,255');
-      drawNeurons(B.neuronsR, aR, '16,185,129');
-      // Synaptische Signale: Partikel entlang der Verbindungen
-      function drawParts(pts, es, arr, act, rgb) {
-        const want = act > 0.15 ? Math.round(act * 40) : 0;
-        while (arr.length < want) arr.push({ e: (Math.random() * es.length) | 0, t: Math.random(), sp: 0.5 + Math.random() * 0.9 });
-        if (arr.length > want) arr.length = want;
-        for (const p of arr) {
-          const e = es[p.e], A = pts[e[0]], Bp = pts[e[1]];
-          p.t += p.sp / 60 * (0.6 + act);
-          if (p.t >= 1) { p.t = 0; p.e = (Math.random() * es.length) | 0; }
-          const x = A.x + (Bp.x - A.x) * p.t, y = A.y + (Bp.y - A.y) * p.t;
-          c.strokeStyle = 'rgba(' + rgb + ',0.55)'; c.lineWidth = 1.2;
-          c.beginPath(); c.moveTo(x - (Bp.x - A.x) * 0.06, y - (Bp.y - A.y) * 0.06); c.lineTo(x, y); c.stroke();
-          c.fillStyle = 'rgba(' + rgb + ',0.95)';
-          c.beginPath(); c.arc(x, y, 1.5, 0, 6.29); c.fill();
+      drawHot(B.hotL, aL, '0,240,255');
+      drawHot(B.hotR, aR, '16,185,129');
+      // Data-Streams: Partikel entlang der Pfade (links herein = GPU0-In, rechts heraus = GPU1-Out)
+      function drawStreams(paths, act, rgb) {
+        if (act < 0.12) return;
+        for (let i = 0; i < paths.length; i++) {
+          const path = paths[i], nP = 2 + (i % 2);
+          for (let k = 0; k < nP; k++) {
+            if (!path._p) path._p = [];
+            while (path._p.length < nP) path._p.push(Math.random());
+            for (let j = 0; j < nP; j++) {
+              let tt = path._p[j] + dt * (0.16 + act * 0.3) * (1 + 0.3 * Math.sin(i * 2.7 + k));
+              if (tt >= 1) tt -= 1;
+              path._p[j] = tt;
+              const idx = tt * (path.length - 1), i0 = Math.floor(idx), fr = idx - i0;
+              const pA = path[i0], pB = path[Math.min(path.length - 1, i0 + 1)];
+              const x = pA.x + (pB.x - pA.x) * fr, y = pA.y + (pB.y - pA.y) * fr;
+              const q = path[Math.max(0, i0 - 3)];
+              c.strokeStyle = 'rgba(' + rgb + ',' + (0.5 * act).toFixed(3) + ')'; c.lineWidth = 1.6;
+              c.beginPath(); c.moveTo(q.x, q.y); c.lineTo(x, y); c.stroke();
+              c.fillStyle = 'rgba(255,255,255,' + (0.75 * act).toFixed(3) + ')';
+              c.beginPath(); c.arc(x, y, 1.7, 0, 6.29); c.fill();
+            }
+          }
         }
       }
-      drawParts(B.neuronsL, B.edgesL, B.partsL, aL, '0,240,255');
-      drawParts(B.neuronsR, B.edgesR, B.partsR, aR, '16,185,129');
-      // Corpus Callosum: DUAL (Tensor-Split) aktiv → amber Puls + Signale quer durch die Mitte
+      drawStreams(B.streamsL, aL, '0,240,255');
+      drawStreams(B.streamsR, aR, '16,185,129');
+      // Mittellinie (DUAL / Tensor-Split)
       const cx = w / 2;
-      if (d.dual) {
-        const grad = c.createLinearGradient(cx - 16, 0, cx + 16, 0);
-        grad.addColorStop(0, 'rgba(245,158,11,0)');
-        grad.addColorStop(0.5, 'rgba(245,158,11,' + (0.10 + 0.06 * Math.sin(t * 3)).toFixed(3) + ')');
-        grad.addColorStop(1, 'rgba(245,158,11,0)');
-        c.fillStyle = grad; c.fillRect(cx - 16, 0, 32, h);
-        for (let i = 0; i < 12; i++) {
-          const y = h * 0.15 + Math.abs(Math.sin(i * 12.9898)) * h * 0.7;
-          const x = cx + Math.sin(t * (1.4 + i * 0.13) + i * 2.4) * 11;
-          c.fillStyle = 'rgba(245,158,11,0.9)';
-          c.beginPath(); c.arc(x, y, 1.6, 0, 6.29); c.fill();
+      if (brainData.dual) {
+        const g = c.createLinearGradient(cx - 14, 0, cx + 14, 0);
+        g.addColorStop(0, 'rgba(245,158,11,0)');
+        g.addColorStop(0.5, 'rgba(245,158,11,' + (0.14 + 0.07 * Math.sin(t * 3)).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(245,158,11,0)');
+        c.fillStyle = g; c.fillRect(cx - 14, B.cxTop, 28, B.cxBot - B.cxTop);
+        c.strokeStyle = 'rgba(251,191,36,0.9)'; c.lineWidth = 1.4;
+        for (let i = 0; i < 7; i++) {
+          const y = B.cxTop + ((t * (26 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
+          c.beginPath(); c.moveTo(cx, y); c.lineTo(cx, y + 7); c.stroke();
         }
       } else {
-        c.strokeStyle = 'rgba(245,158,11,0.12)'; c.lineWidth = 1;
-        c.beginPath(); c.moveTo(cx, h * 0.18); c.lineTo(cx, h * 0.82); c.stroke();
+        c.strokeStyle = 'rgba(245,158,11,0.25)'; c.lineWidth = 1;
+        c.setLineDash([3, 5]);
+        c.beginPath(); c.moveTo(cx, B.cxTop); c.lineTo(cx, B.cxBot); c.stroke();
+        c.setLineDash([]);
       }
     }
 
