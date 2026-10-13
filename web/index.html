@@ -306,7 +306,7 @@
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, rain: null, hotL: [], hotR: [], streamsL: [], streamsR: [] };
+    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], streamsL: [], streamsR: [] };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
 
     function catmullRom(pts, seg) {
@@ -355,7 +355,7 @@
 
       const L = { x0: cx - bw * 0.43, x1: cx - bw * 0.04, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
       const R = { x0: cx + bw * 0.04, x1: cx + bw * 0.43, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
-      // ── GPU0 (links): PCB-Traces — gerade Linien mit 45°-Biegungen, Pads am Ende ──
+      // ── Beide Seiten: PCB-Traces wie linke Referenz-Seite — gerade Linien mit 45°-Biegungen, Pads am Ende ──
       function circuitTrace(x0, y0, r) {
         const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0, dir = Math.random() < 0.5 ? 1 : -1;
         for (let i = 0; i < 3 + (Math.random() * 3 | 0); i++) {
@@ -368,26 +368,9 @@
         }
         return pts;
       }
-      // ── GPU1 (rechts): fließende Nervenkurven (S-Kurven von oben nach unten, wie Referenz) ──
-      function nerveCurve(r, short) {
-        const y0 = r.y0 + Math.random() * (r.y1 - r.y0) * (short ? 0.3 : 0.12);
-        const span = (r.y1 - r.y0) * (short ? 0.25 + Math.random() * 0.25 : 0.6 + Math.random() * 0.35);
-        const y1 = cl(y0 + span, r.y0, r.y1);
-        const x0 = r.x0 + Math.random() * (r.x1 - r.x0);
-        const x1 = r.x0 + Math.random() * (r.x1 - r.x0);
-        const c1 = { x: cl(x0 + (Math.random() - 0.5) * bw * 0.2, r.x0, r.x1), y: y0 + span * (0.15 + Math.random() * 0.25) };
-        const c2 = { x: cl(x1 + (Math.random() - 0.5) * bw * 0.2, r.x0, r.x1), y: y0 + span * (0.55 + Math.random() * 0.25) };
-        const pts = [];
-        for (let s = 0; s <= 22; s++) {
-          const u = s / 22, v = 1 - u;
-          pts.push({ x: v*v*v*x0 + 3*v*v*u*c1.x + 3*v*u*u*c2.x + u*u*u*x1, y: v*v*v*y0 + 3*v*v*u*c1.y + 3*v*u*u*c2.y + u*u*u*y1 });
-        }
-        return pts;
-      }
       B.hotL = []; B.hotR = [];
       for (let i = 0; i < 30; i++) B.hotL.push({ pts: circuitTrace(L.x0 + Math.random() * (L.x1 - L.x0), L.y0 + Math.random() * (L.y1 - L.y0), L), ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
-      for (let i = 0; i < 14; i++) B.hotR.push({ pts: nerveCurve(R, false), sm: true, ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
-      for (let i = 0; i < 9; i++) B.hotR.push({ pts: nerveCurve(R, true), sm: true, ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
+      for (let i = 0; i < 30; i++) B.hotR.push({ pts: circuitTrace(R.x0 + Math.random() * (R.x1 - R.x0), R.y0 + Math.random() * (R.y1 - R.y0), R), ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
 
       // ── Data-Streams (wie Referenz: links gerade Linien mit 45°-Anlauf, rechts fächernde Bögen) ──
       function edgePoint(side, yT) {
@@ -419,34 +402,38 @@
         B.streamsL.push({ path: pts, node: { x: e.x, y: e.y } });
       }
       B.streamsR = [];
-      for (let i = 0; i < 9; i++) {
-        const y = cy - bh * 0.40 + bh * 0.80 * (i / 8) + (Math.random() * 12 - 6);
+      for (let i = 0; i < 11; i++) {
+        const y = cy - bh * 0.42 + bh * 0.84 * (i / 10) + (Math.random() * 12 - 6);
         const e = edgePoint(1, y);
-        const sp = (e.y - cy) / bh;   // obere Bögen krümmen nach oben, untere nach unten
-        B.streamsR.push({ path: bez(e, { x: e.x + 44, y: e.y - sp * 26 }, { x: w * 0.86, y: e.y - sp * (95 + Math.random() * 60) }, { x: w + 12, y: e.y - sp * 130 }, 30), node: { x: e.x, y: e.y } });
+        // wie linke Referenz-Seite: gerade Linien mit 45°-Anlauf, teils kurze Stubs
+        const xStart = Math.random() < 0.3 ? w * (0.80 + Math.random() * 0.12) : w + 12;
+        const pts = [{ x: e.x, y: e.y }];
+        if (Math.random() < 0.75) { const dy = (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18); pts.push({ x: e.x + 20, y: cl(y + dy, 4, h - 4) }); pts.push({ x: e.x + 34, y }); }
+        pts.push({ x: xStart, y });
+        B.streamsR.push({ path: pts, node: { x: e.x, y: e.y } });
       }
 
-      // ── Statische Textur: Traces (geclippt in Hemisphären) + Pads + Outline ──
-      const tex = document.createElement('canvas');
-      tex.width = brainCanvas.width; tex.height = brainCanvas.height;
-      const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
-      function strokePath(pts) { tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.stroke(); }
-      function strokeSmooth(pts) { tc.beginPath(); tc.moveTo(pts[0].x, pts[0].y); for (let i = 1; i < pts.length - 1; i++) { const mx = (pts[i].x + pts[i + 1].x) / 2, my = (pts[i].y + pts[i + 1].y) / 2; tc.quadraticCurveTo(pts[i].x, pts[i].y, mx, my); } tc.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y); tc.stroke(); }
-      function hemiClip(pts) { tc.save(); tc.beginPath(); pts.forEach((p, i) => i === 0 ? tc.moveTo(p.x, p.y) : tc.lineTo(p.x, p.y)); tc.closePath(); tc.clip(); }
-      // GPU0 (links): PCB-Traces + Pads
-      hemiClip(B.hemiL);
-      tc.lineWidth = 1; tc.strokeStyle = 'rgba(0,240,255,0.26)';
-      for (const tr of B.hotL) { strokePath(tr.pts); const e = tr.pts[tr.pts.length - 1]; tc.fillStyle = 'rgba(0,240,255,0.4)'; tc.beginPath(); tc.arc(e.x, e.y, 1.5, 0, 6.29); tc.fill(); }
-      tc.restore();
-      // GPU1 (rechts): Nervenkurven
-      hemiClip(B.hemiR);
-      tc.lineWidth = 1; tc.strokeStyle = 'rgba(16,185,129,0.30)';
-      for (const tr of B.hotR) strokeSmooth(tr.pts);
-      tc.restore();
-      // Outline: Glow + Linie
-      tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(B.outline.concat([B.outline[0]]));
-      tc.lineWidth = 1.4; tc.strokeStyle = 'rgba(186,230,253,0.55)'; strokePath(B.outline.concat([B.outline[0]]));
+      // ── Statische Texturen in 3 Ebenen: Outline (tex) + Traces links (texL) + Traces rechts (texR) — letztere werden pro Frame mit alpha ∝ Load gezeichnet ──
+      function makeTex() { const t = document.createElement('canvas'); t.width = brainCanvas.width; t.height = brainCanvas.height; return t; }
+      function strokePath(ctx, pts) { ctx.beginPath(); pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)); ctx.stroke(); }
+      function hemiClip(ctx, pts) { ctx.save(); ctx.beginPath(); pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)); ctx.closePath(); ctx.clip(); }
+      // Basis: Outline (Glow + Linie), immer an
+      const tex = makeTex(); const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(tc, B.outline.concat([B.outline[0]]));
+      tc.lineWidth = 1.4; tc.strokeStyle = 'rgba(186,230,253,0.55)'; strokePath(tc, B.outline.concat([B.outline[0]]));
       B.tex = tex;
+      // GPU0 (links): PCB-Traces + Pads
+      const texL = makeTex(); const tl = texL.getContext('2d'); tl.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hemiClip(tl, B.hemiL);
+      tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.55)';
+      for (const tr of B.hotL) { strokePath(tl, tr.pts); const e = tr.pts[tr.pts.length - 1]; tl.fillStyle = 'rgba(0,240,255,0.7)'; tl.beginPath(); tl.arc(e.x, e.y, 1.5, 0, 6.29); tl.fill(); }
+      tl.restore(); B.texL = texL;
+      // GPU1 (rechts): PCB-Traces + Pads
+      const texR = makeTex(); const trc = texR.getContext('2d'); trc.setTransform(dpr, 0, 0, dpr, 0, 0);
+      hemiClip(trc, B.hemiR);
+      trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.55)';
+      for (const tr of B.hotR) { strokePath(trc, tr.pts); const e = tr.pts[tr.pts.length - 1]; trc.fillStyle = 'rgba(16,185,129,0.7)'; trc.beginPath(); trc.arc(e.x, e.y, 1.5, 0, 6.29); trc.fill(); }
+      trc.restore(); B.texR = texR;
       // ── Binär-Regen-Textur (scrollt) ──
       const rain = document.createElement('canvas');
       rain.width = brainCanvas.width; rain.height = brainCanvas.height * 2;
@@ -495,8 +482,28 @@
       if (brainData.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
       const idle = 0.06 + 0.03 * Math.sin(t * 0.8);
       const aL = Math.max(idle, actL), aR = Math.max(idle, actR);
-      // Statische Textur (Traces + Outline)
+      // Basis-Outline
       if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
+      // Hirnhälfte-Glow ∝ Aktivität
+      function hemiGlow(hemi, act, rgb, side) {
+        if (act < 0.08) return;
+        c.save();
+        c.beginPath(); hemi.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.closePath(); c.clip();
+        const gx = B.cx + side * B.bw * 0.25;
+        const g = c.createRadialGradient(gx, B.cy, 10, gx, B.cy, B.bh * 0.5);
+        g.addColorStop(0, 'rgba(' + rgb + ',' + (0.20 * act).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(' + rgb + ',0)');
+        c.fillStyle = g; c.fillRect(0, 0, w, h);
+        c.restore();
+      }
+      hemiGlow(B.hemiL, aL, '0,240,255', -1);
+      hemiGlow(B.hemiR, aR, '16,185,129', 1);
+      // PCB-Traces: Helligkeit ∝ GPU-Load (idle schwach → volle Last hell)
+      c.globalAlpha = 0.18 + 0.82 * Math.min(1, aL);
+      if (B.texL) c.drawImage(B.texL, 0, 0, w, h);
+      c.globalAlpha = 0.18 + 0.82 * Math.min(1, aR);
+      if (B.texR) c.drawImage(B.texR, 0, 0, w, h);
+      c.globalAlpha = 1;
       // Hot-Traces: leuchtende Segmente + Pads ∝ Aktivität (geclippt in die Hemisphären)
       function drawHot(list, act, rgb, hemi, smooth) {
         c.save();
@@ -518,7 +525,7 @@
         c.restore();
       }
       drawHot(B.hotL, aL, '0,240,255', B.hemiL, false);
-      drawHot(B.hotR, aR, '16,185,129', B.hemiR, true);
+      drawHot(B.hotR, aR, '16,185,129', B.hemiR, false);
       // Data-Streams (wie Referenz): links gerade Linien mit leuchtenden Knoten an der Kante,
       // rechts fächernde Bögen nach außen
       function drawStreamSet(set, act, rgb) {
