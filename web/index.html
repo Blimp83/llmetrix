@@ -390,27 +390,38 @@
         }
         return out;
       }
-      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): gerade Linien mit 45°-Biegungen + Pad an der Kante ──
-      B.wiresL = [];
-      for (let i = 0; i < 12; i++) {
-        const y = cy - bh * 0.44 + bh * 0.88 * (i / 11) + (Math.random() * 10 - 5);
-        const e = edgePoint(-1, y);
-        const stub = Math.random() < 0.3;
-        const pts = [{ x: stub ? w * (0.06 + Math.random() * 0.14) : -8, y }];
-        if (Math.random() < 0.7) { const dy = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 14); pts.push({ x: e.x - 30, y }); pts.push({ x: e.x - 30 + 14, y: cl(y + dy, 4, h - 4) }); }
-        pts.push({ x: e.x, y: e.y });
-        B.wiresL.push({ pts, pad: { x: e.x, y: e.y } });
+      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): mittellange PCB-Traces mit 45°-Biegungen + Pad am Ende, keine langen Strahlen ──
+      function wireSet(side) {
+        const set = [];
+        for (let i = 0; i < 16; i++) {
+          const y = cy - bh * 0.46 + bh * 0.92 * (i / 15) + (Math.random() * 8 - 4);
+          const e = edgePoint(side, y);
+          const d = side === -1 ? -1 : 1;   // links: nach links, rechts: nach rechts
+          const pts = [{ x: e.x, y: e.y }];
+          let x = e.x, yy = y;
+          const kind = Math.random();
+          if (kind < 0.25) {
+            // kurzer Stub → Pad
+            x += d * (8 + Math.random() * 14);
+          } else if (kind < 0.65) {
+            // Horizontal → 45°-Schritt → Horizontal → Pad
+            const h1 = 16 + Math.random() * 34, step = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 12), h2 = 12 + Math.random() * 30;
+            x += d * h1; pts.push({ x, y: yy });
+            yy += step; x += d * Math.abs(step); pts.push({ x, y: yy });
+            x += d * h2; pts.push({ x, y: yy });
+          } else {
+            // 45°-Schritt → Horizontal → 45°-Schritt → Pad
+            const s1 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13), hh = 18 + Math.random() * 36, s2 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13);
+            yy += s1; x += d * Math.abs(s1); pts.push({ x, y: yy });
+            x += d * hh; pts.push({ x, y: yy });
+            yy += s2; x += d * Math.abs(s2); pts.push({ x, y: yy });
+          }
+          set.push({ pts, pad: { x: cl(x, 2, w - 2), y: cl(yy, 4, h - 4) } });
+        }
+        return set;
       }
-      B.wiresR = [];
-      for (let i = 0; i < 12; i++) {
-        const y = cy - bh * 0.44 + bh * 0.88 * (i / 11) + (Math.random() * 10 - 5);
-        const e = edgePoint(1, y);
-        const stub = Math.random() < 0.3;
-        const pts = [{ x: e.x, y: e.y }];
-        if (Math.random() < 0.7) { const dy = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 14); pts.push({ x: e.x + 30 - 14, y: cl(y + dy, 4, h - 4) }); pts.push({ x: e.x + 30, y }); }
-        pts.push({ x: stub ? w * (0.80 + Math.random() * 0.14) : w + 8, y });
-        B.wiresR.push({ pts, pad: { x: e.x, y: e.y } });
-      }
+      B.wiresL = wireSet(-1);
+      B.wiresR = wireSet(1);
 
       // ── Statische Texturen in 3 Ebenen: Outline (tex) + Traces links (texL) + Traces rechts (texR) — letztere werden pro Frame mit alpha ∝ Load gezeichnet ──
       function makeTex() { const t = document.createElement('canvas'); t.width = brainCanvas.width; t.height = brainCanvas.height; return t; }
@@ -428,7 +439,7 @@
       for (const tr of B.hotL) { strokePath(tl, tr.pts); const e = tr.pts[tr.pts.length - 1]; tl.fillStyle = 'rgba(0,240,255,0.7)'; tl.beginPath(); tl.arc(e.x, e.y, 1.5, 0, 6.29); tl.fill(); }
       tl.restore();
       tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.5)';
-      for (const wr of B.wiresL) { strokePath(tl, wr.pts); tl.fillStyle = 'rgba(0,240,255,0.8)'; tl.beginPath(); tl.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); tl.fill(); }
+      for (const wr of B.wiresL) { strokePath(tl, wr.pts); tl.fillStyle = 'rgba(0,240,255,0.85)'; tl.beginPath(); tl.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); tl.fill(); }
       B.texL = texL;
       // GPU1 (rechts): PCB-Traces + Pads + externe Verbindungen
       const texR = makeTex(); const trc = texR.getContext('2d'); trc.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -437,7 +448,7 @@
       for (const tr of B.hotR) { strokePath(trc, tr.pts); const e = tr.pts[tr.pts.length - 1]; trc.fillStyle = 'rgba(16,185,129,0.7)'; trc.beginPath(); trc.arc(e.x, e.y, 1.5, 0, 6.29); trc.fill(); }
       trc.restore();
       trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.5)';
-      for (const wr of B.wiresR) { strokePath(trc, wr.pts); trc.fillStyle = 'rgba(16,185,129,0.8)'; trc.beginPath(); trc.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); trc.fill(); }
+      for (const wr of B.wiresR) { strokePath(trc, wr.pts); trc.fillStyle = 'rgba(16,185,129,0.85)'; trc.beginPath(); trc.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); trc.fill(); }
       B.texR = texR;
       // ── Binär-Regen-Textur (scrollt) ──
       const rain = document.createElement('canvas');
