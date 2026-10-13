@@ -306,7 +306,7 @@
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], streamsL: [], streamsR: [] };
+    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], wiresL: [], wiresR: [] };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
 
     function catmullRom(pts, seg) {
@@ -390,27 +390,26 @@
         }
         return out;
       }
-      B.streamsL = [];
-      for (let i = 0; i < 11; i++) {
-        const y = cy - bh * 0.42 + bh * 0.84 * (i / 10) + (Math.random() * 12 - 6);
+      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): gerade Linien mit 45°-Biegungen + Pad an der Kante ──
+      B.wiresL = [];
+      for (let i = 0; i < 12; i++) {
+        const y = cy - bh * 0.44 + bh * 0.88 * (i / 11) + (Math.random() * 10 - 5);
         const e = edgePoint(-1, y);
-        // wie Referenz: teils kurze Stubs, teils volle Länge; 45°-Anlauf zur Kante
-        const xStart = Math.random() < 0.3 ? w * (0.08 + Math.random() * 0.12) : -12;
-        const pts = [{ x: xStart, y }];
-        if (Math.random() < 0.75) { const dy = (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18); pts.push({ x: e.x - 34, y }); pts.push({ x: e.x - 20, y: cl(y + dy, 4, h - 4) }); }
+        const stub = Math.random() < 0.3;
+        const pts = [{ x: stub ? w * (0.06 + Math.random() * 0.14) : -8, y }];
+        if (Math.random() < 0.7) { const dy = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 14); pts.push({ x: e.x - 30, y }); pts.push({ x: e.x - 30 + 14, y: cl(y + dy, 4, h - 4) }); }
         pts.push({ x: e.x, y: e.y });
-        B.streamsL.push({ path: pts, node: { x: e.x, y: e.y } });
+        B.wiresL.push({ pts, pad: { x: e.x, y: e.y } });
       }
-      B.streamsR = [];
-      for (let i = 0; i < 11; i++) {
-        const y = cy - bh * 0.42 + bh * 0.84 * (i / 10) + (Math.random() * 12 - 6);
+      B.wiresR = [];
+      for (let i = 0; i < 12; i++) {
+        const y = cy - bh * 0.44 + bh * 0.88 * (i / 11) + (Math.random() * 10 - 5);
         const e = edgePoint(1, y);
-        // wie linke Referenz-Seite: gerade Linien mit 45°-Anlauf, teils kurze Stubs
-        const xStart = Math.random() < 0.3 ? w * (0.80 + Math.random() * 0.12) : w + 12;
+        const stub = Math.random() < 0.3;
         const pts = [{ x: e.x, y: e.y }];
-        if (Math.random() < 0.75) { const dy = (Math.random() < 0.5 ? -1 : 1) * (10 + Math.random() * 18); pts.push({ x: e.x + 20, y: cl(y + dy, 4, h - 4) }); pts.push({ x: e.x + 34, y }); }
-        pts.push({ x: xStart, y });
-        B.streamsR.push({ path: pts, node: { x: e.x, y: e.y } });
+        if (Math.random() < 0.7) { const dy = (Math.random() < 0.5 ? -1 : 1) * (12 + Math.random() * 14); pts.push({ x: e.x + 30 - 14, y: cl(y + dy, 4, h - 4) }); pts.push({ x: e.x + 30, y }); }
+        pts.push({ x: stub ? w * (0.80 + Math.random() * 0.14) : w + 8, y });
+        B.wiresR.push({ pts, pad: { x: e.x, y: e.y } });
       }
 
       // ── Statische Texturen in 3 Ebenen: Outline (tex) + Traces links (texL) + Traces rechts (texR) — letztere werden pro Frame mit alpha ∝ Load gezeichnet ──
@@ -422,18 +421,24 @@
       tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(tc, B.outline.concat([B.outline[0]]));
       tc.lineWidth = 1.4; tc.strokeStyle = 'rgba(186,230,253,0.55)'; strokePath(tc, B.outline.concat([B.outline[0]]));
       B.tex = tex;
-      // GPU0 (links): PCB-Traces + Pads
+      // GPU0 (links): PCB-Traces + Pads + externe Verbindungen
       const texL = makeTex(); const tl = texL.getContext('2d'); tl.setTransform(dpr, 0, 0, dpr, 0, 0);
       hemiClip(tl, B.hemiL);
       tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.55)';
       for (const tr of B.hotL) { strokePath(tl, tr.pts); const e = tr.pts[tr.pts.length - 1]; tl.fillStyle = 'rgba(0,240,255,0.7)'; tl.beginPath(); tl.arc(e.x, e.y, 1.5, 0, 6.29); tl.fill(); }
-      tl.restore(); B.texL = texL;
-      // GPU1 (rechts): PCB-Traces + Pads
+      tl.restore();
+      tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.5)';
+      for (const wr of B.wiresL) { strokePath(tl, wr.pts); tl.fillStyle = 'rgba(0,240,255,0.8)'; tl.beginPath(); tl.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); tl.fill(); }
+      B.texL = texL;
+      // GPU1 (rechts): PCB-Traces + Pads + externe Verbindungen
       const texR = makeTex(); const trc = texR.getContext('2d'); trc.setTransform(dpr, 0, 0, dpr, 0, 0);
       hemiClip(trc, B.hemiR);
       trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.55)';
       for (const tr of B.hotR) { strokePath(trc, tr.pts); const e = tr.pts[tr.pts.length - 1]; trc.fillStyle = 'rgba(16,185,129,0.7)'; trc.beginPath(); trc.arc(e.x, e.y, 1.5, 0, 6.29); trc.fill(); }
-      trc.restore(); B.texR = texR;
+      trc.restore();
+      trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.5)';
+      for (const wr of B.wiresR) { strokePath(trc, wr.pts); trc.fillStyle = 'rgba(16,185,129,0.8)'; trc.beginPath(); trc.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); trc.fill(); }
+      B.texR = texR;
       // ── Binär-Regen-Textur (scrollt) ──
       const rain = document.createElement('canvas');
       rain.width = brainCanvas.width; rain.height = brainCanvas.height * 2;
@@ -526,37 +531,18 @@
       }
       drawHot(B.hotL, aL, '0,240,255', B.hemiL, false);
       drawHot(B.hotR, aR, '16,185,129', B.hemiR, false);
-      // Data-Streams (wie Referenz): links gerade Linien mit leuchtenden Knoten an der Kante,
-      // rechts fächernde Bögen nach außen
-      function drawStreamSet(set, act, rgb) {
-        if (act < 0.12) return;
-        for (const s of set) {
-          const pts = s.path, nP = 1 + ((s.node.x * 7 + s.node.y * 13) % 2);
-          if (!s._p) s._p = [];
-          while (s._p.length < nP) s._p.push(Math.random());
-          for (let j = 0; j < nP; j++) {
-            let tt = s._p[j] + dt * (0.14 + act * 0.25);
-            if (tt >= 1) tt -= 1;
-            s._p[j] = tt;
-            const idx = tt * (pts.length - 1), i0 = Math.floor(idx), fr = idx - i0;
-            const pA = pts[i0], pB = pts[Math.min(pts.length - 1, i0 + 1)];
-            const x = pA.x + (pB.x - pA.x) * fr, y = pA.y + (pB.y - pA.y) * fr;
-            const q = pts[Math.max(0, i0 - 4)];
-            c.strokeStyle = 'rgba(' + rgb + ',' + (0.65 * act).toFixed(3) + ')'; c.lineWidth = 1.7;
-            c.beginPath(); c.moveTo(q.x, q.y); c.lineTo(x, y); c.stroke();
-            c.fillStyle = 'rgba(255,255,255,' + (0.8 * act).toFixed(3) + ')';
-            c.beginPath(); c.arc(x, y, 1.6, 0, 6.29); c.fill();
-          }
-          // leuchtender Knoten an der Kante (wie Referenz)
-          const n = s.node, pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + n.x * 0.1);
-          c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.5 + 0.4 * pulse)).toFixed(3) + ')';
-          c.beginPath(); c.arc(n.x, n.y, 2.2 + pulse * 1.4, 0, 6.29); c.fill();
-          c.fillStyle = 'rgba(255,255,255,' + (act * (0.6 + 0.3 * pulse)).toFixed(3) + ')';
+      // Externe Verbindungen: statisch (in texL/texR), nur die Kanten-Pads pulsen ∝ Aktivität
+      function padPulse(set, act, rgb) {
+        for (const wr of set) {
+          const n = wr.pad, pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + n.x * 0.1);
+          c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.45 + 0.35 * pulse)).toFixed(3) + ')';
+          c.beginPath(); c.arc(n.x, n.y, 2.4 + pulse * 1.4, 0, 6.29); c.fill();
+          c.fillStyle = 'rgba(255,255,255,' + (act * (0.5 + 0.3 * pulse)).toFixed(3) + ')';
           c.beginPath(); c.arc(n.x, n.y, 1.1, 0, 6.29); c.fill();
         }
       }
-      drawStreamSet(B.streamsL, aL, '0,240,255');
-      drawStreamSet(B.streamsR, aR, '16,185,129');
+      padPulse(B.wiresL, aL, '0,240,255');
+      padPulse(B.wiresR, aR, '16,185,129');
       // Mittellinie = Längsfurche (wie Referenz: helle weiße Linie)
       const cxm = B.cx;
       c.lineCap = 'round';
