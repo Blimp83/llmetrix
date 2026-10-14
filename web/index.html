@@ -111,6 +111,7 @@
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-amber-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span></span>
         <span class="flex items-center gap-2">
           <span id="live-badge" class="text-[10px] text-slate-500 font-bold">○ KEINE AKTIVE ERZEUGUNG</span>
+          <span id="mtp-badge" class="hidden text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50 font-mono" title="MTP-Draft: Acceptance-Rate + Ø akzeptierte Länge pro Draft">--</span>
           <span class="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-500/50" id="core-source">--</span>
         </span>
       </div>
@@ -740,6 +741,14 @@
       const lastPrompt = [...pts].reverse().find(p => p.kind === 'prompt');
       $('spark-gen-now').innerText = lastGen ? lastGen.tg.toFixed(1) : '--';
       $('spark-prompt-now').innerText = lastPrompt ? lastPrompt.tps.toFixed(0) : '--';
+      // MTP Acceptance-Rate (wird am Ende einer Generation geloggt)
+      const mb = $('mtp-badge');
+      if (best.d.mtp && best.d.mtp.acc_rate != null) {
+        mb.classList.remove('hidden');
+        mb.innerText = 'MTP: ' + (best.d.mtp.acc_rate * 100).toFixed(1) + '% · Ø ' + best.d.mtp.mean_acc_len.toFixed(2);
+      } else {
+        mb.classList.add('hidden');
+      }
       const badge = $('live-badge');
       if (best.d.active) {
         badge.innerText = '● LIVE — ERZEUGUNG AKTIV (' + best.src.toUpperCase() + ')';

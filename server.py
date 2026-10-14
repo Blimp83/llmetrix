@@ -247,6 +247,8 @@ _PROMPT_RE = re.compile(r"prompt eval time\s*=\s*[\d.\s]+ms\s*/\s*(\d+)\s*tokens
 # Aggregierte Eval-Zeile (kleine Batches, z. B. 1b-Modelle auf gpu0/gpu1 — dort fehlt die n_gen-Zeile):
 # "eval time =     246.19 ms /    67 tokens" → tps = tokens / ms
 _EVAL_RE = re.compile(r"(?<!prompt )(?<!total )eval time\s*=\s*([\d.]+)\s*ms\s*/\s*(\d+)\s*tokens")
+# MTP/speculative Decoding: "#mean acc len = 1.87, #acc rate/pos = (0.867)" (wird am Ende einer Generation geloggt)
+_MTP_RE = re.compile(r"#mean acc len = ([\d.]+), #acc rate/pos = \(([\d.]+)\)")
 
 
 def get_live_tps(gpu, window=900):
@@ -277,10 +279,16 @@ def get_live_tps(gpu, window=900):
                     if ms > 0 and n_tok > 0:
                         pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "gen",
                                     "tg": round(n_tok / (ms / 1e3), 1), "tg3s": round(n_tok / (ms / 1e3), 1)})
+                    continue
+                mt = _MTP_RE.search(line)
+                if mt:
+                    pts.append({"t": int(ts_ns) // 1_000_000_000, "kind": "mtp",
+                                "mean_acc_len": float(mt.group(1)), "acc_rate": float(mt.group(2))})
         pts.sort(key=lambda x: x["t"])
         now = int(time.time())
         last_gen = next((p for p in reversed(pts) if p["kind"] == "gen"), None)
         last_prompt = next((p for p in reversed(pts) if p["kind"] == "prompt"), None)
+        last_mtp = next((p for p in reversed(pts) if p["kind"] == "mtp"), None)
         active = bool(last_gen and now - last_gen["t"] < 90)
         if not active and last_prompt and now - last_prompt["t"] < 90:
             active = True   # nur Prompt-Phase (Cold-Start) zählt auch als aktiv
@@ -291,6 +299,7 @@ def get_live_tps(gpu, window=900):
             "points": pts,
             "active": active,
             "current_tps": round(last_gen["tg"], 1) if last_gen else None,
+            "mtp": {"acc_rate": last_mtp["acc_rate"], "mean_acc_len": last_mtp["mean_acc_len"], "t": last_mtp["t"]} if last_mtp else None,
         }
     except Exception as e:
         return {"gpu": gpu, "error": str(e), "points": [], "count": 0}
