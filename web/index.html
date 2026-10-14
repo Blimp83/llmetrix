@@ -7,6 +7,8 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; }
+    /* Horizontales Overflow verhindert (war die Ursache für "nicht zentriert" auf Mobile: Seite war 402px breit statt 390) */
+    html, body { overflow-x: hidden; }
     /* Mobile (Hochformat): kompakte Anordnung — GPU-Karten nebeneinander, CORE darunter.
        Die Reihenfolge wird per JS aus einer eigenen Mobile-Layout-Persistenz gesetzt (DOM-basiert,
        damit Drag&Drop in beiden Modus funktioniert) */
@@ -198,17 +200,17 @@
 
   <!-- Log Console + Status -->
   <div class="relative z-10 bg-slate-950/90 p-4 rounded-t-lg border-t border-cyan-500/30 font-mono">
-    <div class="flex items-center justify-between mb-2">
-      <div class="flex items-center space-x-2">
+    <div class="flex flex-wrap items-center justify-between mb-2 gap-x-3 gap-y-1">
+      <div class="flex flex-wrap items-center space-x-2 min-w-0">
         <span class="text-[10px] text-slate-400 tracking-widest">OLLAMA LIVE-LOG</span>
         <button onclick="switchLogTab('gpu0')" id="logtab-gpu0" class="px-2 py-0.5 text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900">GPU 0</button>
         <button onclick="switchLogTab('gpu1')" id="logtab-gpu1" class="px-2 py-0.5 text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900">GPU 1</button>
         <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900">DUAL</button>
-        <span id="log-model" class="text-[10px] text-slate-500 ml-2"></span>
+        <span id="log-model" class="text-[10px] text-slate-500 ml-2 break-all"></span>
       </div>
-      <div class="flex items-center gap-3">
+      <div class="flex items-center gap-3 shrink-0">
         <button onclick="resetLayout()" class="px-2 py-0.5 text-[10px] bg-slate-900 text-slate-400 border border-slate-700 rounded hover:text-cyan-300 hover:border-cyan-500/50" title="Kacheln zurück ins Standard-Layout">↺ RESET LAYOUT</button>
-        <span id="log-status" class="text-[10px] text-slate-500">--</span>
+        <span id="log-status" class="text-[10px] text-slate-500 whitespace-nowrap">--</span>
       </div>
     </div>
     <div id="log-view" class="h-36 overflow-y-auto bg-black/60 border border-slate-800 rounded p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all scrollbar-thin"></div>
