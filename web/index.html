@@ -6,7 +6,9 @@
   <title>LLMetrix // Asymmetric Neural Matrix</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
-    body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; overflow: hidden; }
+    body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; }
+    /* Mobile: Kacheln dicht aneinander, kein unnötiger Abstand */
+    @media (max-width: 767px) { body { -webkit-tap-highlight-color: transparent; } }
     .scanline {
       background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35));
       background-size: 100% 4px;
@@ -37,19 +39,19 @@
     [data-handle] { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; min-height: 18px; padding: 0 4px; touch-action: none; font-size: 14px; }
   </style>
 </head>
-<body class="h-screen w-screen relative scanline flex flex-col justify-between p-6 select-none">
+<body class="min-h-screen w-full relative scanline flex flex-col p-3 sm:p-6 select-none">
 
   <!-- Header HUD -->
-  <header class="relative z-10 flex justify-between items-center border-b border-cyan-500/30 pb-4 bg-slate-950/80 p-4 rounded-b-lg">
+  <header class="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 border-b border-cyan-500/30 pb-4 bg-slate-950/80 p-3 sm:p-4 rounded-b-lg">
     <div>
-      <h1 class="text-2xl font-black tracking-widest text-cyan-400 glow-cyan">LLMETRIX // ASYMMETRIC NEURAL MATRIX</h1>
-      <p class="text-xs text-slate-400 mt-1">
+      <h1 class="text-base sm:text-2xl font-black tracking-widest text-cyan-400 glow-cyan">LLMETRIX // ASYMMETRIC NEURAL MATRIX</h1>
+      <p class="text-[10px] sm:text-xs text-slate-400 mt-1">
         AI SERVER 192.168.178.40 &mdash; DUAL RTX 5060 Ti &mdash; LIVE TELEMETRY VIA NAP GATEWAY
       </p>
     </div>
     <div class="flex items-center space-x-3 bg-slate-900/90 p-2 border border-slate-800 rounded">
       <span id="link-state" class="text-[10px] text-slate-500 px-1">LINK: --</span>
-      <span class="text-xs text-slate-400">BENCHMARK:</span>
+      <span class="text-xs text-slate-400 hidden sm:inline">BENCHMARK:</span>
       <button id="bench-gpu0" onclick="runBenchmark('gpu0')" class="px-2.5 py-1 bg-cyan-950 text-xs text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900 disabled:opacity-40">GPU 0</button>
       <button id="bench-gpu1" onclick="runBenchmark('gpu1')" class="px-2.5 py-1 bg-emerald-950 text-xs text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900 disabled:opacity-40">GPU 1</button>
       <button id="bench-dual" onclick="runBenchmark('dual')" class="px-2.5 py-1 bg-amber-950 text-xs text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900 disabled:opacity-40">DUAL</button>
@@ -57,10 +59,10 @@
   </header>
 
   <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 (Kacheln verschiebbar) -->
-  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-6 my-auto pointer-events-none items-stretch">
+  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-2 sm:gap-3 my-auto pointer-events-none items-stretch">
 
     <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
-    <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-4 rounded-lg space-y-2 pointer-events-auto">
+    <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 gap-2 flex-wrap">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ACTIVITY // BRAIN MAP</span><span class="text-[10px] text-slate-500">GPU 0 (LINKS) · DUAL (MITTE) · GPU 1 (RECHTS)</span></span>
         <span class="flex items-center gap-3 text-[10px] font-mono">
@@ -69,11 +71,11 @@
           <span class="text-emerald-300" id="brain-g1">GPU1: --</span>
         </span>
       </div>
-      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:240px"></canvas>
+      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:200px"></canvas>
     </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
-    <div id="panel-gpu0" class="draggable-card col-span-3 cyber-card p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu0" class="draggable-card col-span-12 md:col-span-3 cyber-card p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
@@ -104,7 +106,7 @@
     </div>
 
     <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
-    <div id="panel-core" class="draggable-card col-span-6 cyber-card-amber p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-core" class="draggable-card col-span-12 md:col-span-6 cyber-card-amber p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-amber-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-amber-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span></span>
         <span class="flex items-center gap-2">
@@ -158,7 +160,7 @@
     </div>
 
     <!-- RIGHT CORTEX // GPU 1 -->
-    <div id="panel-gpu1" class="draggable-card col-span-3 cyber-card-emerald p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu1" class="draggable-card col-span-12 md:col-span-3 cyber-card-emerald p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-emerald-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
@@ -259,9 +261,12 @@
       // LIVEREFLOW: Kachel wird live an die Ziehpunkt-Position geschoben,
       // Nachbarn gleiten animiert aus dem Weg → man sieht sofort das End-Ergebnis.
       const others = gridCards().filter(c => c !== drag.card);
-      // Ziel: vor der ersten Kachel, deren Mitte RECHTS vom Cursor liegt; sonst ans Ende.
+      // Layout-Achse erkennen: Desktop (1 Reihe) = horizontal, Mobile (gestapelt) = vertikal
+      let hSpread = 0, vSpread = 0;
+      for (const el of others) { const r = el.getBoundingClientRect(); hSpread = Math.max(hSpread, Math.abs(r.left - drag.card.getBoundingClientRect().left)); vSpread = Math.max(vSpread, Math.abs(r.top - drag.card.getBoundingClientRect().top)); }
+      const vertical = vSpread > hSpread;
       let insertBefore = null;
-      for (const el of others) { const r = el.getBoundingClientRect(); if (e.clientX < r.left + r.width / 2) { insertBefore = el; break; } }
+      for (const el of others) { const r = el.getBoundingClientRect(); if (vertical ? e.clientY < r.top + r.height / 2 : e.clientX < r.left + r.width / 2) { insertBefore = el; break; } }
       const posKey = insertBefore ? 'before:' + insertBefore.id : 'last';
       if (posKey === drag.card.dataset.dragpos) return;   // Position gleich → nichts tun
       // FLIP: altes Grid erfassen → umsortieren → Delta animiert
@@ -293,9 +298,16 @@
 
     grid.addEventListener('pointerdown', onPointerDown);
 
-    // Doppelklick auf Kachel/Handle → Standard-Layout
+    // Doppelklick auf Kachel/Handle → Standard-Layout (+ Double-Tap für Touch)
     grid.querySelectorAll('.draggable-card').forEach(card => {
       card.addEventListener('dblclick', e => { if (e.target.hasAttribute('data-handle') || e.target === card) applyOrder(DEFAULT_ORDER.slice()); });
+      let lastTap = 0;
+      card.addEventListener('pointerup', e => {
+        if (!e.target.hasAttribute('data-handle')) return;
+        const now = Date.now();
+        if (now - lastTap < 320) applyOrder(DEFAULT_ORDER.slice());
+        lastTap = now;
+      });
     });
 
     // ── 1. NEURAL BRAIN (2D) — GPU0 (links) · DUAL (Corpus Callosum) · GPU1 (rechts) ──
@@ -740,7 +752,10 @@
     }
 
     // ── 5. Live-Metriken Polling ─────────────────────────────────────────
+    let metricsBusy = false;
     async function pollMetrics() {
+      if (metricsBusy) return;   // langsamer Call läuft noch → kein Stapeln
+      metricsBusy = true;
       try {
         const r = await fetch('/api/metrics', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
@@ -790,7 +805,7 @@
         $('link-state').innerText = 'LINK: DOWN';
         $('link-state').className = 'text-[10px] text-red-400 px-1 font-bold animate-pulse';
         log('[LINK-LOSS]: Kein Telemetrie-Paket vom Backend. Versuche Reconnect...', 'text-red-400');
-      }
+      } finally { metricsBusy = false; }
     }
 
     // ── 6. Ollama Live-Log (Loki) ────────────────────────────────────────

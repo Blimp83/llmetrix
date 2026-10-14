@@ -77,16 +77,25 @@ def prom_query(query):
 def get_gpus():
     gpus = {}
     try:
-        for m in prom_query('DCGM_FI_DEV_GPU_UTIL{instance="192.168.178.40:9400"}'):
-            gpus[m["metric"].get("gpu", "0")] = {"load": float(m["value"][1])}
-        for m in prom_query('DCGM_FI_DEV_FB_USED{instance="192.168.178.40:9400"}'):
-            gpus.setdefault(m["metric"].get("gpu", "0"), {})["vram_used_mib"] = float(m["value"][1])
-        for m in prom_query('DCGM_FI_DEV_FB_FREE{instance="192.168.178.40:9400"}'):
-            gpus.setdefault(m["metric"].get("gpu", "0"), {})["vram_free_mib"] = float(m["value"][1])
-        for m in prom_query('DCGM_FI_DEV_GPU_TEMP{instance="192.168.178.40:9400"}'):
-            gpus.setdefault(m["metric"].get("gpu", "0"), {})["temp_c"] = float(m["value"][1])
-        for m in prom_query('DCGM_FI_DEV_POWER_USAGE{instance="192.168.178.40:9400"}'):
-            gpus.setdefault(m["metric"].get("gpu", "0"), {})["power_w"] = float(m["value"][1])
+        # Alle Metriken parallel (statt sequenziell) → /api/metrics bleibt schnell, auch unter Inferenzlast
+        def one(metric, key):
+            out = {}
+            try:
+                for m in prom_query(f'{metric}{{instance="192.168.178.40:9400"}}'):
+                    out[m["metric"].get("gpu", "0")] = float(m["value"][1])
+            except Exception:
+                pass
+            return key, out
+        with ThreadPoolExecutor(max_workers=5) as ex:
+            for key, vals in ex.map(lambda kv: one(*kv), [
+                ('DCGM_FI_DEV_GPU_UTIL', 'load'),
+                ('DCGM_FI_DEV_FB_USED', 'vram_used_mib'),
+                ('DCGM_FI_DEV_FB_FREE', 'vram_free_mib'),
+                ('DCGM_FI_DEV_GPU_TEMP', 'temp_c'),
+                ('DCGM_FI_DEV_POWER_USAGE', 'power_w'),
+            ]):
+                for gpu, v in vals.items():
+                    gpus.setdefault(gpu, {})[key] = v
     except Exception as e:
         return {"error": str(e)}
     for g in gpus.values():
@@ -156,15 +165,45 @@ def _ollama_one(key, base):
 
 
 def get_ollama():
-    # Parallel: Ollama-Server unter Inferenzlast antworten teils langsam (2–4 s) →
+    # Parallel: Ollama-Server unter Inferenzlast antworten teils langsam (5–12 s) →
     # sequenziell würde /api/metrics auf 10+ s laufen und der Frontend-Poll (2 s) würde timeouten.
     with ThreadPoolExecutor(max_workers=3) as ex:
         return dict(ex.map(lambda kv: _ollama_one(*kv), OLLAMA_EP.items()))
 
 
+# ── Ollama-Background-Refresher: hält den Stand immer frisch, damit /api/metrics sofort antwortet ──
+# Unter Inferenzlast brauchen die Ollama-Calls 5–12 s. Statt dass jeder Poll wartet,
+# aktualisiert ein Daemon-Thread alle 3 s im Hintergrund; der Endpoint liefert den letzten guten Stand.
+_oll_cache = {"ts": 0, "data": None}
+
+
+def _ollama_refresher():
+    while True:
+        try:
+            data = get_ollama()
+            _oll_cache["data"] = data
+            _oll_cache["ts"] = time.time()
+        except Exception:
+            pass
+        time.sleep(3)
+
+
+def get_ollama_cached():
+    """Letzter guter Ollama-Stand (Background-Refresher); erst beim Start synchron nachladen."""
+    if _oll_cache["data"] is None:
+        try:
+            _oll_cache["data"] = get_ollama()
+            _oll_cache["ts"] = time.time()
+        except Exception:
+            pass
+    return _oll_cache["data"] or {}
+
+
 def build_metrics():
+    # GPUs (Prometheus, ~5 ms) synchron; Ollama aus dem Background-Cache → /api/metrics bleibt unter ~1 s,
+    # auch wenn die Ollama-Server gerade 5–12 s für einen Call brauchen.
     gpus = get_gpus()
-    ollama = get_ollama()
+    ollama = get_ollama_cached()
     ai_online = any(g.get("load") is not None for g in gpus.values()) if isinstance(gpus, dict) and "error" not in gpus else False
     return {
         "ts": round(time.time(), 2),
@@ -492,4 +531,5 @@ _load_history()
 if __name__ == "__main__":
     port = int(os.environ.get("LM_PORT", "8790"))
     print(f"[llmetrix] starting on :{port} (prometheus={PROM_URL})", flush=True)
+    threading.Thread(target=_ollama_refresher, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
