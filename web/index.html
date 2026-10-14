@@ -332,7 +332,7 @@
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], wiresL: [], wiresR: [] };
+    const B = { w: 0, h: 0, dpr: 1, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], wiresL: [], wiresR: [] };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
 
     function catmullRom(pts, seg) {
@@ -355,6 +355,7 @@
       B.w = brainCanvas.clientWidth; B.h = brainCanvas.clientHeight;
       if (!B.w || !B.h) return;
       brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
+      B.dpr = dpr;
       const w = B.w, h = B.h;
       const cl = (v, a, b) => Math.max(a, Math.min(b, v));
       // ── Silhouette: Gehirn-Top-View (wie Referenz): zwei Hemisphären mit Lappen-Struktur, Portrait ──
@@ -520,11 +521,13 @@
       requestAnimationFrame(brainFrame);
       const c = brainCanvas.getContext('2d');
       const w = B.w, h = B.h; if (!w || !h) return;
+      // DPR-Transform: Backing Store ist w*dpr × h*dpr, alle Koordinaten sind CSS-Pixel (fixt Verschiebung auf Retina-Devices)
+      c.setTransform(B.dpr, 0, 0, B.dpr, 0, 0);
       const t = now / 1000;
       const dt = Math.min(0.05, (now - brainLast) / 1000 || 0.016); brainLast = now;
       c.clearRect(0, 0, w, h);
       // Binär-Regen (scrollt langsam)
-      if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h); c.drawImage(B.rain, 0, off); }
+      if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h, w, h * 2); c.drawImage(B.rain, 0, off, w, h * 2); }
       // Aktivität: Load als Basis; aktive Inferenz zündet die Hälfte; DUAL → beide
       let actL = brainData.online ? 0.95 * (brainData.load0 / 100) : 0;
       let actR = brainData.online ? 0.95 * (brainData.load1 / 100) : 0;
