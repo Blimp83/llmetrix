@@ -415,37 +415,46 @@
         return out;
       }
       // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): mittellange PCB-Traces mit 45°-Biegungen + Pad am Ende, keine langen Strahlen ──
-      function wireSet(side) {
+      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): mittellange PCB-Traces mit 45°-Biegungen + Pad am Ende.
+      //    SYMMETRISCH: gleiche Y-Positionen + gespiegelte Pfade links/rechts → wirkt zentriert ──
+      const wirePlans = [];
+      for (let i = 0; i < 16; i++) {
+        const yT = cy - bh * 0.46 + bh * 0.92 * (i / 15) + (Math.random() * 8 - 4);
+        const kind = Math.random();
+        const plan = { yT, kind };
+        if (kind >= 0.25 && kind < 0.65) {
+          plan.h1 = 16 + Math.random() * 34; plan.step = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 12); plan.h2 = 12 + Math.random() * 30;
+        } else if (kind >= 0.65) {
+          plan.s1 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13); plan.hh = 18 + Math.random() * 36; plan.s2 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13);
+        } else {
+          plan.stub = 8 + Math.random() * 14;
+        }
+        wirePlans.push(plan);
+      }
+      function buildWires(side) {
         const set = [];
-        for (let i = 0; i < 16; i++) {
-          const y = cy - bh * 0.46 + bh * 0.92 * (i / 15) + (Math.random() * 8 - 4);
-          const e = edgePoint(side, y);
-          const d = side === -1 ? -1 : 1;   // links: nach links, rechts: nach rechts
+        for (const pl of wirePlans) {
+          const e = edgePoint(side, pl.yT);
+          const d = side === -1 ? -1 : 1;
           const pts = [{ x: e.x, y: e.y }];
-          let x = e.x, yy = y;
-          const kind = Math.random();
-          if (kind < 0.25) {
-            // kurzer Stub → Pad
-            x += d * (8 + Math.random() * 14);
-          } else if (kind < 0.65) {
-            // Horizontal → 45°-Schritt → Horizontal → Pad
-            const h1 = 16 + Math.random() * 34, step = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 12), h2 = 12 + Math.random() * 30;
-            x += d * h1; pts.push({ x, y: yy });
-            yy += step; x += d * Math.abs(step); pts.push({ x, y: yy });
-            x += d * h2; pts.push({ x, y: yy });
+          let x = e.x, yy = pl.yT;
+          if (pl.kind < 0.25) {
+            x += d * pl.stub;
+          } else if (pl.kind < 0.65) {
+            x += d * pl.h1; pts.push({ x, y: yy });
+            yy += pl.step; x += d * Math.abs(pl.step); pts.push({ x, y: yy });
+            x += d * pl.h2; pts.push({ x, y: yy });
           } else {
-            // 45°-Schritt → Horizontal → 45°-Schritt → Pad
-            const s1 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13), hh = 18 + Math.random() * 36, s2 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13);
-            yy += s1; x += d * Math.abs(s1); pts.push({ x, y: yy });
-            x += d * hh; pts.push({ x, y: yy });
-            yy += s2; x += d * Math.abs(s2); pts.push({ x, y: yy });
+            yy += pl.s1; x += d * Math.abs(pl.s1); pts.push({ x, y: yy });
+            x += d * pl.hh; pts.push({ x, y: yy });
+            yy += pl.s2; x += d * Math.abs(pl.s2); pts.push({ x, y: yy });
           }
           set.push({ pts, pad: { x: cl(x, 2, w - 2), y: cl(yy, 4, h - 4) } });
         }
         return set;
       }
-      B.wiresL = wireSet(-1);
-      B.wiresR = wireSet(1);
+      B.wiresL = buildWires(-1);
+      B.wiresR = buildWires(1);
 
       // ── Statische Texturen in 3 Ebenen: Outline (tex) + Traces links (texL) + Traces rechts (texR) — letztere werden pro Frame mit alpha ∝ Load gezeichnet ──
       function makeTex() { const t = document.createElement('canvas'); t.width = brainCanvas.width; t.height = brainCanvas.height; return t; }
