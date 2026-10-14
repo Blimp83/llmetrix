@@ -7,8 +7,12 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <style>
     body { background-color: #020610; color: #00f0ff; font-family: 'Courier New', monospace; }
-    /* Mobile: Kacheln dicht aneinander, kein unnötiger Abstand */
-    @media (max-width: 767px) { body { -webkit-tap-highlight-color: transparent; } }
+    /* Mobile (Hochformat): kompakte Anordnung — GPU-Karten nebeneinander, CORE darunter.
+       Die Reihenfolge wird per JS aus einer eigenen Mobile-Layout-Persistenz gesetzt (DOM-basiert,
+       damit Drag&Drop in beiden Modus funktioniert) */
+    @media (max-width: 767px) {
+      body { -webkit-tap-highlight-color: transparent; }
+    }
     .scanline {
       background: linear-gradient(to bottom, rgba(255,255,255,0), rgba(255,255,255,0) 50%, rgba(0, 0, 0, 0.35) 50%, rgba(0, 0, 0, 0.35));
       background-size: 100% 4px;
@@ -59,7 +63,7 @@
   </header>
 
   <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 (Kacheln verschiebbar) -->
-  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-2 sm:gap-3 my-auto pointer-events-none items-stretch">
+  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-1 sm:gap-3 my-auto pointer-events-none items-start">
 
     <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
     <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto">
@@ -71,11 +75,11 @@
           <span class="text-emerald-300" id="brain-g1">GPU1: --</span>
         </span>
       </div>
-      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60" style="height:200px"></canvas>
+      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60 h-40 md:h-[210px]"></canvas>
     </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
-    <div id="panel-gpu0" class="draggable-card col-span-12 md:col-span-3 cyber-card p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu0" class="draggable-card col-span-6 md:col-span-3 cyber-card p-2.5 sm:p-5 rounded-lg space-y-2 sm:space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
@@ -161,7 +165,7 @@
     </div>
 
     <!-- RIGHT CORTEX // GPU 1 -->
-    <div id="panel-gpu1" class="draggable-card col-span-12 md:col-span-3 cyber-card-emerald p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu1" class="draggable-card col-span-6 md:col-span-3 cyber-card-emerald p-2.5 sm:p-5 rounded-lg space-y-2 sm:space-y-3 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-emerald-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
@@ -203,7 +207,7 @@
         <span id="log-model" class="text-[10px] text-slate-500 ml-2"></span>
       </div>
       <div class="flex items-center gap-3">
-        <button onclick="applyOrder(DEFAULT_ORDER.slice())" class="px-2 py-0.5 text-[10px] bg-slate-900 text-slate-400 border border-slate-700 rounded hover:text-cyan-300 hover:border-cyan-500/50" title="Kacheln zurück ins Standard-Layout">↺ RESET LAYOUT</button>
+        <button onclick="resetLayout()" class="px-2 py-0.5 text-[10px] bg-slate-900 text-slate-400 border border-slate-700 rounded hover:text-cyan-300 hover:border-cyan-500/50" title="Kacheln zurück ins Standard-Layout">↺ RESET LAYOUT</button>
         <span id="log-status" class="text-[10px] text-slate-500">--</span>
       </div>
     </div>
@@ -217,19 +221,28 @@
     // ── 0. Drag & Drop der Kacheln (Pointer Events — robust für echte Maus) ─
     const grid = document.getElementById('main-grid');
     const PANEL_ORDER_KEY = 'llmetrix-panel-order';
+    const PANEL_ORDER_KEY_MOBILE = 'llmetrix-panel-order-mobile';
     const DEFAULT_ORDER = ['panel-brain', 'panel-gpu0', 'panel-core', 'panel-gpu1'];
+    const DEFAULT_ORDER_MOBILE = ['panel-brain', 'panel-gpu0', 'panel-gpu1', 'panel-core'];   // kompakt: GPU-Karten nebeneinander, CORE darunter
+    const mqMobile = window.matchMedia('(max-width: 767px)');
+    const isMobile = () => mqMobile.matches;
+    function orderForMode() { return isMobile() ? DEFAULT_ORDER_MOBILE.slice() : DEFAULT_ORDER.slice(); }
+    function keyForMode() { return isMobile() ? PANEL_ORDER_KEY_MOBILE : PANEL_ORDER_KEY; }
 
-    function applyOrder(order) {
+    function applyOrder(order, persist = true) {
       order.forEach(id => grid.appendChild(document.getElementById(id)));
-      localStorage.setItem(PANEL_ORDER_KEY, JSON.stringify(order));
+      if (persist) localStorage.setItem(keyForMode(), JSON.stringify(order));
     }
-    function currentOrder() {
+    function currentOrder(def) {
       try {
-        const saved = JSON.parse(localStorage.getItem(PANEL_ORDER_KEY) || 'null');
-        return Array.isArray(saved) && saved.length === DEFAULT_ORDER.length && DEFAULT_ORDER.every(id => saved.includes(id)) ? saved : DEFAULT_ORDER.slice();
-      } catch (_) { return DEFAULT_ORDER.slice(); }
+        const saved = JSON.parse(localStorage.getItem(keyForMode()) || 'null');
+        return Array.isArray(saved) && saved.length === def.length && def.every(id => saved.includes(id)) ? saved : def.slice();
+      } catch (_) { return def.slice(); }
     }
-    applyOrder(currentOrder());
+    function resetLayout() { applyOrder(orderForMode()); }
+    applyOrder(currentOrder(orderForMode()));
+    // Breakpoint-Wechsel → Layout des jeweiligen Modus anwenden (DOM-basiert, Drag&Drop bleibt in beiden Modus funktionsfähig)
+    mqMobile.addEventListener('change', () => applyOrder(currentOrder(orderForMode())));
 
     function gridCards() {
       return [...grid.children].filter(el => el.id && el.id.startsWith('panel-'));
@@ -301,12 +314,12 @@
 
     // Doppelklick auf Kachel/Handle → Standard-Layout (+ Double-Tap für Touch)
     grid.querySelectorAll('.draggable-card').forEach(card => {
-      card.addEventListener('dblclick', e => { if (e.target.hasAttribute('data-handle') || e.target === card) applyOrder(DEFAULT_ORDER.slice()); });
+      card.addEventListener('dblclick', e => { if (e.target.hasAttribute('data-handle') || e.target === card) resetLayout(); });
       let lastTap = 0;
       card.addEventListener('pointerup', e => {
         if (!e.target.hasAttribute('data-handle')) return;
         const now = Date.now();
-        if (now - lastTap < 320) applyOrder(DEFAULT_ORDER.slice());
+        if (now - lastTap < 320) resetLayout();
         lastTap = now;
       });
     });
