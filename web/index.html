@@ -417,6 +417,7 @@
         return arr;
       }
       B.streams = { L: mkStream(-1), R: mkStream(1) };
+      B.glows = [];   // leuchtende 0/1 an den Bit-Ursprüngen in der Matrix (links cyan / rechts emerald)
 
       // ── Binär-Regen-Hintergrund (statische Textur, scrollt langsam) ──
       const rain = document.createElement('canvas');
@@ -477,6 +478,26 @@
       c.clearRect(0, 0, w, h);
       if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h, w, h * 2); c.drawImage(B.rain, 0, off, w, h * 2); }
 
+      // ── Matrix-Glow: fliegende Bits hinterlassen an ihrem Ursprung eine leuchtende 0/1 (links cyan / rechts emerald), ~0,9 s, fällt mit der Matrix ──
+      const GLOW_DUR = 0.9;
+      for (let i = B.glows.length - 1; i >= 0; i--) {
+        const gl = B.glows[i];
+        gl.t += dt; gl.y += 14 * dt;   // gleiche Fall-Geschwindigkeit wie der Regen
+        if (gl.t > GLOW_DUR || gl.y > h + 6) { B.glows.splice(i, 1); continue; }
+        const a = Math.pow(1 - gl.t / GLOW_DUR, 1.3);
+        if (a < 0.02) continue;
+        const col = gl.side < 0 ? '34,211,238' : '52,211,153';
+        const rg = c.createRadialGradient(gl.x, gl.y, 0, gl.x, gl.y, 9);
+        rg.addColorStop(0, 'rgba(' + col + ',' + (0.45 * a).toFixed(3) + ')');
+        rg.addColorStop(1, 'rgba(' + col + ',0)');
+        c.fillStyle = rg; c.beginPath(); c.arc(gl.x, gl.y, 9, 0, 6.29); c.fill();
+        c.save(); c.shadowColor = 'rgba(' + col + ',' + a.toFixed(3) + ')'; c.shadowBlur = 8;
+        c.font = 'bold 10px monospace';
+        c.fillStyle = 'rgba(248,253,255,' + (0.9 * a).toFixed(3) + ')';
+        c.fillText(gl.g, gl.x, gl.y);
+        c.restore();
+      }
+
       const cx = w / 2, cy = h / 2;
       const R = Math.min(h * 0.40, w * 0.16);
       orbAngle += dt * (0.3 + 1.1 * (smL + smR));   // dreht sich beständig, schneller unter Last
@@ -518,9 +539,11 @@
         c.font = '10px monospace';
         for (const s of B.streams[key]) {
           s.p += dt * s.sp * (0.5 + 3.2 * act);
-          if (s.p >= 1) {   // im Kern absorbiert → neues Bit spawnt aus der Matrix
+          if (s.p >= 1) {   // im Kern absorbiert → neues Bit spawnt aus der Matrix (hinterlässt dort einen Glow)
             s.p = 0; s.sp = 0.3 + Math.random() * 0.55;
             const np = B.spawnBit(side); s.x = np.x; s.y = np.y; s.g = np.g;
+            B.glows.push({ x: np.x, y: np.y, g: np.g, t: 0, side });
+            if (B.glows.length > 80) B.glows.splice(0, B.glows.length - 80);
           }
           const u = s.p;
           const mx = (s.x + cx) / 2, my = (s.y + cy) / 2 + (s.y > cy ? 14 : -14);
