@@ -566,7 +566,7 @@
       const svg = $(svgId); if (!svg) return;
       const p = Math.max(0, Math.min(1.05, frac));
       const r = 18, C = 2 * Math.PI * r;
-      const col = p > 0.92 ? '#fbbf24' : color;   // >92% = Warn-Farbe (hot), sonst Kartenfarbe
+      const col = p > 0.92 ? '#f87171' : color;   // >92% = Warn-Rot (hot, im Schema: offline-Status nutzt es auch), sonst Kartenfarbe
       svg.innerHTML =
         '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="5"/>' +
         (p > 0.002 ? '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="5" ' +
