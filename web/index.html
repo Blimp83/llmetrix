@@ -71,7 +71,7 @@
     <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
     <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2 gap-2 flex-wrap">
-        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ACTIVITY // BRAIN MAP</span><span class="text-[10px] text-slate-500">GPU 0 (LINKS) · DUAL (MITTE) · GPU 1 (RECHTS)</span></span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">NEURAL ORB // INFERENCE CORE</span><span class="text-[10px] text-slate-500">TOKENS: GPU 0 (LINKS) · DUAL (KERN) · GPU 1 (RECHTS)</span></span>
         <span class="flex items-center gap-3 text-[10px] font-mono">
           <span class="text-cyan-300" id="brain-g0">GPU0: --</span>
           <span id="brain-dual" class="text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900">DUAL: IDLE</span>
@@ -327,29 +327,17 @@
       });
     });
 
-    // ── 1. NEURAL BRAIN (2D) — GPU0 (links) · DUAL (Corpus Callosum) · GPU1 (rechts) ──
+    // ── 1. NEURAL ORB (2D) — GPU0 (links, cyan) · DUAL (Kern) · GPU1 (rechts, emerald) ──
+    // Dichte Partikelwolke (Oberfläche + Volumen), beständige Rotation. Treffer schießen als Nadeln vom Punkt
+    // heraus und ziehen sich wieder ein (Animation ∝ GPU-Aktivität). Token-Streams fließen von den Kanten in den Kern.
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
-    let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für Brain-Tile
+    let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für ORB-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, dpr: 1, outline: [], cxTop: 0, cxBot: 0, tex: null, texL: null, texR: null, rain: null, hotL: [], hotR: [], wiresL: [], wiresR: [] };
+    const B = { w: 0, h: 0, dpr: 1, pts: [], streams: null, rings: null, rain: null };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
-
-    function catmullRom(pts, seg) {
-      const out = [], n = pts.length;
-      for (let i = 0; i < n; i++) {
-        const p0 = pts[(i - 1 + n) % n], p1 = pts[i], p2 = pts[(i + 1) % n], p3 = pts[(i + 2) % n];
-        for (let s = 0; s < seg; s++) {
-          const u = s / seg, u2 = u * u, u3 = u2 * u;
-          out.push({
-            x: 0.5 * ((2 * p1.x) + (-p0.x + p2.x) * u + (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * u2 + (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * u3),
-            y: 0.5 * ((2 * p1.y) + (-p0.y + p2.y) * u + (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * u2 + (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * u3),
-          });
-        }
-      }
-      return out;
-    }
+    const clamp01 = v => Math.max(0, Math.min(1, v));
 
     function buildBrain() {
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -358,136 +346,42 @@
       brainCanvas.width = B.w * dpr; brainCanvas.height = B.h * dpr;
       B.dpr = dpr;
       const w = B.w, h = B.h;
-      const cl = (v, a, b) => Math.max(a, Math.min(b, v));
-      // ── Silhouette: Gehirn-Top-View (wie Referenz): zwei Hemisphären mit Lappen-Struktur, Portrait ──
-      const U = [
-        [0.50, 0.07], [0.59, 0.02], [0.70, 0.03], [0.80, 0.07], [0.88, 0.14], [0.94, 0.25],
-        [0.96, 0.37], [0.93, 0.47], [0.90, 0.54], [0.94, 0.64], [0.94, 0.75], [0.89, 0.85],
-        [0.80, 0.93], [0.68, 0.98], [0.56, 1.00], [0.50, 0.95],
-        [0.44, 1.00], [0.32, 0.98], [0.20, 0.93], [0.11, 0.85], [0.06, 0.75], [0.06, 0.64],
-        [0.10, 0.54], [0.07, 0.47], [0.04, 0.37], [0.06, 0.25], [0.12, 0.14], [0.20, 0.07],
-        [0.30, 0.03], [0.41, 0.02]
-      ];
-      const bh = h * 0.94, bw = bh * 0.78;   // Portrait wie Referenz
-      const cx = w / 2, cy = h / 2;
-      B.cx = cx; B.cy = cy; B.bw = bw; B.bh = bh;
-      const raw = U.map(p => ({ x: cx + (p[0] - 0.5) * bw, y: cy + (p[1] - 0.5) * bh }));
-      B.outline = catmullRom(raw, 8);
-      // Mittellinie: oberster/unterster Punkt nahe cx
-      let cxTop = h, cxBot = 0;
-      for (const p of B.outline) { if (Math.abs(p.x - cx) < 3) { if (p.y < cxTop) cxTop = p.y; if (p.y > cxBot) cxBot = p.y; } }
-      B.cxTop = cxTop; B.cxBot = cxBot;
-      // ── Hemisphären-Clipp-Pfade (Ober-Dip → Seite → Unter-Dip) ──
-      B.hemiR = catmullRom(raw.slice(0, 17), 8);
-      B.hemiL = catmullRom([raw[16], ...raw.slice(17), raw[0]], 8);
 
-      const L = { x0: cx - bw * 0.43, x1: cx - bw * 0.04, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
-      const R = { x0: cx + bw * 0.04, x1: cx + bw * 0.43, y0: cy - bh * 0.39, y1: cy + bh * 0.39 };
-      // ── Beide Seiten: PCB-Traces wie linke Referenz-Seite — gerade Linien mit 45°-Biegungen, Pads am Ende ──
-      function circuitTrace(x0, y0, r) {
-        const pts = [{ x: x0, y: y0 }]; let x = x0, y = y0, dir = Math.random() < 0.5 ? 1 : -1;
-        for (let i = 0; i < 3 + (Math.random() * 3 | 0); i++) {
-          const k = Math.random();
-          if (k < 0.52) x = cl(x + (14 + Math.random() * 28) * dir, r.x0, r.x1);
-          else if (k < 0.82) { const dy = Math.random() < 0.5 ? 1 : -1, len = 9 + Math.random() * 16; x = cl(x + len * dir, r.x0, r.x1); y = cl(y + len * dy, r.y0, r.y1); }
-          else y = cl(y + (10 + Math.random() * 20) * (Math.random() < 0.5 ? 1 : -1), r.y0, r.y1);
-          pts.push({ x, y });
-          if (Math.random() < 0.35) dir *= -1;
+      // ── Partikelwolke: Fibonacci-Schale (55%) + innere Volumenpunkte (45%) für die "fluffy"-Tiefe ──
+      const N = 1500, GA = Math.PI * (3 - Math.sqrt(5));
+      B.pts = [];
+      for (let i = 0; i < N; i++) {
+        let x, y, z, vol;
+        if (i < N * 0.55) {   // Oberfläche
+          const yy = 1 - (i / (N * 0.55 - 1)) * 2;
+          const r = Math.sqrt(Math.max(0, 1 - yy * yy));
+          x = Math.cos(GA * i) * r; y = yy; z = Math.sin(GA * i) * r; vol = false;
+        } else {               // Volumen (gleichmäßig im Ball)
+          const u = Math.random(), v = Math.random();
+          const th = 2 * Math.PI * u, ph = Math.acos(2 * v - 1);
+          const rr = 0.3 + 0.68 * Math.cbrt(Math.random());
+          x = rr * Math.sin(ph) * Math.cos(th); y = rr * Math.cos(ph); z = rr * Math.sin(ph) * Math.sin(th); vol = true;
         }
-        return pts;
+        B.pts.push({
+          x, y, z, vol,
+          ph: Math.random() * 6.28, sp: 0.4 + Math.random() * 1.4,
+          nlen: 7 + Math.random() * 21,          // max. Nadel-Länge (px) — organische Variation
+          st: 'idle', ext: 0, stime: 0, hd: 0,   // Nadel-Zustand: idle → out → hold → in
+        });
       }
-      B.hotL = []; B.hotR = [];
-      for (let i = 0; i < 30; i++) B.hotL.push({ pts: circuitTrace(L.x0 + Math.random() * (L.x1 - L.x0), L.y0 + Math.random() * (L.y1 - L.y0), L), ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
-      for (let i = 0; i < 30; i++) B.hotR.push({ pts: circuitTrace(R.x0 + Math.random() * (R.x1 - R.x0), R.y0 + Math.random() * (R.y1 - R.y0), R), ph: Math.random() * 6.28, sp: 0.5 + Math.random() * 1.5 });
 
-      // ── Data-Streams (wie Referenz: links gerade Linien mit 45°-Anlauf, rechts fächernde Bögen) ──
-      function edgePoint(side, yT) {
-        let best = null, bd = 1e9;
-        for (const p of B.outline) {
-          if (side < 0 ? p.x > cx : p.x < cx) continue;
-          const d = Math.abs(p.y - yT);
-          if (d < bd) { bd = d; best = p; }
+      // ── Token-Streams: Partikel fließen von den Kanten (links=GPU0/cyan, rechts=GPU1/emerald) in den Kern ──
+      function mkStream() {
+        const arr = [];
+        for (let i = 0; i < 30; i++) {
+          arr.push({ y: h / 2 + (Math.random() - 0.5) * h * 1.15, p: Math.random(), sp: 0.3 + Math.random() * 0.55 });
         }
-        return best || { x: cx + side * bw * 0.2, y: cy };
+        return arr;
       }
-      function bez(p0, p1, p2, p3, seg) {
-        const out = [];
-        for (let s = 0; s <= seg; s++) {
-          const u = s / seg, v = 1 - u;
-          out.push({ x: v*v*v*p0.x + 3*v*v*u*p1.x + 3*v*u*u*p2.x + u*u*u*p3.x, y: v*v*v*p0.y + 3*v*v*u*p1.y + 3*v*u*u*p2.y + u*u*u*p3.y });
-        }
-        return out;
-      }
-      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): mittellange PCB-Traces mit 45°-Biegungen + Pad am Ende, keine langen Strahlen ──
-      // ── Externe Schaltkreis-Verbindungen (statisch, wie Referenz): mittellange PCB-Traces mit 45°-Biegungen + Pad am Ende.
-      //    SYMMETRISCH: gleiche Y-Positionen + gespiegelte Pfade links/rechts → wirkt zentriert ──
-      const wirePlans = [];
-      for (let i = 0; i < 16; i++) {
-        const yT = cy - bh * 0.46 + bh * 0.92 * (i / 15) + (Math.random() * 8 - 4);
-        const kind = Math.random();
-        const plan = { yT, kind };
-        if (kind >= 0.25 && kind < 0.65) {
-          plan.h1 = 16 + Math.random() * 34; plan.step = (Math.random() < 0.5 ? -1 : 1) * (8 + Math.random() * 12); plan.h2 = 12 + Math.random() * 30;
-        } else if (kind >= 0.65) {
-          plan.s1 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13); plan.hh = 18 + Math.random() * 36; plan.s2 = (Math.random() < 0.5 ? -1 : 1) * (9 + Math.random() * 13);
-        } else {
-          plan.stub = 8 + Math.random() * 14;
-        }
-        wirePlans.push(plan);
-      }
-      function buildWires(side) {
-        const set = [];
-        for (const pl of wirePlans) {
-          const e = edgePoint(side, pl.yT);
-          const d = side === -1 ? -1 : 1;
-          const pts = [{ x: e.x, y: e.y }];
-          let x = e.x, yy = pl.yT;
-          if (pl.kind < 0.25) {
-            x += d * pl.stub;
-          } else if (pl.kind < 0.65) {
-            x += d * pl.h1; pts.push({ x, y: yy });
-            yy += pl.step; x += d * Math.abs(pl.step); pts.push({ x, y: yy });
-            x += d * pl.h2; pts.push({ x, y: yy });
-          } else {
-            yy += pl.s1; x += d * Math.abs(pl.s1); pts.push({ x, y: yy });
-            x += d * pl.hh; pts.push({ x, y: yy });
-            yy += pl.s2; x += d * Math.abs(pl.s2); pts.push({ x, y: yy });
-          }
-          set.push({ pts, pad: { x: cl(x, 2, w - 2), y: cl(yy, 4, h - 4) } });
-        }
-        return set;
-      }
-      B.wiresL = buildWires(-1);
-      B.wiresR = buildWires(1);
+      B.streams = { L: mkStream(), R: mkStream() };
+      B.rings = { L: [], R: [] };   // Absorptions-Pulse im Kern
 
-      // ── Statische Texturen in 3 Ebenen: Outline (tex) + Traces links (texL) + Traces rechts (texR) — letztere werden pro Frame mit alpha ∝ Load gezeichnet ──
-      function makeTex() { const t = document.createElement('canvas'); t.width = brainCanvas.width; t.height = brainCanvas.height; return t; }
-      function strokePath(ctx, pts) { ctx.beginPath(); pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)); ctx.stroke(); }
-      function hemiClip(ctx, pts) { ctx.save(); ctx.beginPath(); pts.forEach((p, i) => i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)); ctx.closePath(); ctx.clip(); }
-      // Basis: Outline (Glow + Linie), immer an
-      const tex = makeTex(); const tc = tex.getContext('2d'); tc.setTransform(dpr, 0, 0, dpr, 0, 0);
-      tc.lineWidth = 4; tc.strokeStyle = 'rgba(148,233,255,0.10)'; strokePath(tc, B.outline.concat([B.outline[0]]));
-      tc.lineWidth = 1.4; tc.strokeStyle = 'rgba(186,230,253,0.55)'; strokePath(tc, B.outline.concat([B.outline[0]]));
-      B.tex = tex;
-      // GPU0 (links): PCB-Traces + Pads + externe Verbindungen
-      const texL = makeTex(); const tl = texL.getContext('2d'); tl.setTransform(dpr, 0, 0, dpr, 0, 0);
-      hemiClip(tl, B.hemiL);
-      tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.55)';
-      for (const tr of B.hotL) { strokePath(tl, tr.pts); const e = tr.pts[tr.pts.length - 1]; tl.fillStyle = 'rgba(0,240,255,0.7)'; tl.beginPath(); tl.arc(e.x, e.y, 1.5, 0, 6.29); tl.fill(); }
-      tl.restore();
-      tl.lineWidth = 1; tl.strokeStyle = 'rgba(0,240,255,0.5)';
-      for (const wr of B.wiresL) { strokePath(tl, wr.pts); tl.fillStyle = 'rgba(0,240,255,0.85)'; tl.beginPath(); tl.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); tl.fill(); }
-      B.texL = texL;
-      // GPU1 (rechts): PCB-Traces + Pads + externe Verbindungen
-      const texR = makeTex(); const trc = texR.getContext('2d'); trc.setTransform(dpr, 0, 0, dpr, 0, 0);
-      hemiClip(trc, B.hemiR);
-      trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.55)';
-      for (const tr of B.hotR) { strokePath(trc, tr.pts); const e = tr.pts[tr.pts.length - 1]; trc.fillStyle = 'rgba(16,185,129,0.7)'; trc.beginPath(); trc.arc(e.x, e.y, 1.5, 0, 6.29); trc.fill(); }
-      trc.restore();
-      trc.lineWidth = 1; trc.strokeStyle = 'rgba(16,185,129,0.5)';
-      for (const wr of B.wiresR) { strokePath(trc, wr.pts); trc.fillStyle = 'rgba(16,185,129,0.85)'; trc.beginPath(); trc.arc(wr.pad.x, wr.pad.y, 1.8, 0, 6.29); trc.fill(); }
-      B.texR = texR;
-      // ── Binär-Regen-Textur (scrollt) ──
+      // ── Binär-Regen-Hintergrund (statische Textur, scrollt langsam) ──
       const rain = document.createElement('canvas');
       rain.width = brainCanvas.width; rain.height = brainCanvas.height * 2;
       const rc = rain.getContext('2d'); rc.setTransform(dpr, 0, 0, dpr, 0, 0);
@@ -517,19 +411,18 @@
       else { bd.innerText = 'DUAL: IDLE'; bd.className = 'text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900'; }
     }
 
-    let brainLast = 0;
+    let brainLast = 0, orbAngle = 0, smL = 0.08, smR = 0.08;   // smL/smR: geglättete Aktivität (Rotations-Tempo, Nadeln)
+
     function brainFrame(now) {
       requestAnimationFrame(brainFrame);
       const c = brainCanvas.getContext('2d');
       const w = B.w, h = B.h; if (!w || !h) return;
-      // DPR-Transform: Backing Store ist w*dpr × h*dpr, alle Koordinaten sind CSS-Pixel (fixt Verschiebung auf Retina-Devices)
+      // DPR-Transform: Backing Store ist w*dpr × h*dpr, alle Koordinaten sind CSS-Pixel
       c.setTransform(B.dpr, 0, 0, B.dpr, 0, 0);
       const t = now / 1000;
       const dt = Math.min(0.05, (now - brainLast) / 1000 || 0.016); brainLast = now;
-      c.clearRect(0, 0, w, h);
-      // Binär-Regen (scrollt langsam)
-      if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h, w, h * 2); c.drawImage(B.rain, 0, off, w, h * 2); }
-      // Aktivität: Load als Basis; aktive Inferenz zündet die Hälfte; DUAL → beide
+
+      // Aktivität: Load als Basis; aktive Inferenz zündet die Seite; DUAL → beide
       let actL = brainData.online ? 0.95 * (brainData.load0 / 100) : 0;
       let actR = brainData.online ? 0.95 * (brainData.load1 / 100) : 0;
       if (brainData.tps0 > 0) actL = Math.max(actL, 0.8);
@@ -537,79 +430,148 @@
       if (brainData.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
       const idle = 0.06 + 0.03 * Math.sin(t * 0.8);
       const aL = Math.max(idle, actL), aR = Math.max(idle, actR);
-      // Basis-Outline
-      if (B.tex) c.drawImage(B.tex, 0, 0, w, h);
-      // Hirnhälfte-Glow ∝ Aktivität
-      function hemiGlow(hemi, act, rgb, side) {
-        if (act < 0.08) return;
-        c.save();
-        c.beginPath(); hemi.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.closePath(); c.clip();
-        const gx = B.cx + side * B.bw * 0.25;
-        const g = c.createRadialGradient(gx, B.cy, 10, gx, B.cy, B.bh * 0.5);
-        g.addColorStop(0, 'rgba(' + rgb + ',' + (0.20 * act).toFixed(3) + ')');
-        g.addColorStop(1, 'rgba(' + rgb + ',0)');
-        c.fillStyle = g; c.fillRect(0, 0, w, h);
-        c.restore();
+      smL += (aL - smL) * Math.min(1, dt * 4);
+      smR += (aR - smR) * Math.min(1, dt * 4);
+
+      c.clearRect(0, 0, w, h);
+      if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h, w, h * 2); c.drawImage(B.rain, 0, off, w, h * 2); }
+
+      const cx = w / 2, cy = h / 2;
+      const R = Math.min(h * 0.46, w * 0.17);
+      orbAngle += dt * (0.3 + 1.1 * (smL + smR));   // dreht sich beständig, schneller unter Last
+
+      // ── Projektion: Rotation um Y + fester Tilt um X; Farbe nach Bildposition (links cyan → rechts emerald) ──
+      const cA = Math.cos(orbAngle), sA = Math.sin(orbAngle);
+      const tilt = 0.45, cT = Math.cos(tilt), sT = Math.sin(tilt);
+      const back = [], front = [];
+      for (const p of B.pts) {
+        const x1 = p.x * cA + p.z * sA, z1 = -p.x * sA + p.z * cA;
+        const y2 = p.y * cT - z1 * sT, z2 = p.y * sT + z1 * cT;
+        const px = cx + x1 * R, py = cy + y2 * R;
+        const mix = clamp01((px - (cx - R)) / (2 * R));
+        (z2 < 0 ? back : front).push({ p, px, py, mix });
       }
-      hemiGlow(B.hemiL, aL, '0,240,255', -1);
-      hemiGlow(B.hemiR, aR, '16,185,129', 1);
-      // PCB-Traces: Helligkeit ∝ GPU-Load (idle schwach → volle Last hell)
-      c.globalAlpha = 0.18 + 0.82 * Math.min(1, aL);
-      if (B.texL) c.drawImage(B.texL, 0, 0, w, h);
-      c.globalAlpha = 0.18 + 0.82 * Math.min(1, aR);
-      if (B.texR) c.drawImage(B.texR, 0, 0, w, h);
-      c.globalAlpha = 1;
-      // Hot-Traces: leuchtende Segmente + Pads ∝ Aktivität (geclippt in die Hemisphären)
-      function drawHot(list, act, rgb, hemi, smooth) {
-        c.save();
-        c.beginPath(); hemi.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y)); c.closePath(); c.clip();
-        for (const tr of list) {
-          const b = act * (0.45 + 0.55 * Math.sin(t * tr.sp + tr.ph));
-          if (b < 0.06) continue;
-          function path() {
-            c.beginPath();
-            if (smooth) { c.moveTo(tr.pts[0].x, tr.pts[0].y); for (let i = 1; i < tr.pts.length - 1; i++) { const mx = (tr.pts[i].x + tr.pts[i + 1].x) / 2, my = (tr.pts[i].y + tr.pts[i + 1].y) / 2; c.quadraticCurveTo(tr.pts[i].x, tr.pts[i].y, mx, my); } c.lineTo(tr.pts[tr.pts.length - 1].x, tr.pts[tr.pts.length - 1].y); }
-            else tr.pts.forEach((p, i) => i === 0 ? c.moveTo(p.x, p.y) : c.lineTo(p.x, p.y));
+
+      // ── Nadel-Animation: Treffer feuern heraus (out) → halten (hold) → ziehen sich ein (in) ──
+      //    Trigger-Rate ∝ lokaler Aktivität; nur Oberflächenpunkte tragen Nadeln
+      for (const p of B.pts) {
+        if (p.vol) continue;
+        if (p.st === 'idle') {
+          const act = clamp01(smL + (smR - smL) * ((p.x * cA + p.z * sA) * 0.5 + 0.5));
+          if (act > 0.1 && Math.random() < dt * (2.5 * act)) { p.st = 'out'; p.stime = 0; }
+        } else if (p.st === 'out') {
+          p.stime += dt;
+          if (p.stime >= 0.30) { p.st = 'hold'; p.stime = 0; p.hd = 0.06 + Math.random() * 0.22; }
+        } else if (p.st === 'hold') {
+          p.stime += dt;
+          if (p.stime >= p.hd) { p.st = 'in'; p.stime = 0; }
+        } else { // in
+          p.stime += dt;
+          if (p.stime >= 0.55) { p.st = 'idle'; p.ext = 0; continue; }
+        }
+      }
+
+      // ── Rückseite: dunkle Wolke (Tiefe) ──
+      for (const q of back) {
+        const p = q.p;
+        const act = clamp01(smL + (smR - smL) * q.mix);
+        const tw = 0.5 + 0.5 * Math.sin(t * p.sp + p.ph);
+        const b = (p.vol ? 0.04 : 0.06) + (p.vol ? 0.10 : 0.16) * act * tw;
+        c.fillStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + b.toFixed(3) + ')';
+        const s = p.vol ? 1.2 : 1.6;
+        c.fillRect(q.px - s / 2, q.py - s / 2, s, s);
+      }
+
+      // ── Token-Streams: Kante → Kern (nur bei Aktivität auf der Seite), Absorption löst Pulse aus ──
+      function drawStreams(side, act, key) {
+        if (act < 0.12) return;
+        const rgb = side < 0 ? '0,240,255' : '16,185,129';
+        const ex = side < 0 ? -8 : w + 8;
+        for (const s of B.streams[key]) {
+          const ey = s.y;
+          const mx = (ex + cx) / 2, my = (ey + cy) / 2 + (ey > cy ? 14 : -14);
+          s.p += dt * s.sp * (0.5 + 3.2 * act);
+          if (s.p >= 1) {   // im Kern absorbiert → Puls-Ring, neu starten
+            B.rings[key].push(t); if (B.rings[key].length > 14) B.rings[key].shift();
+            s.p = 0; s.y = cy + (Math.random() - 0.5) * h * 1.15; s.sp = 0.3 + Math.random() * 0.55;
           }
-          c.strokeStyle = 'rgba(' + rgb + ',' + (b * 0.25).toFixed(3) + ')'; c.lineWidth = 3.5; path(); c.stroke();
-          c.strokeStyle = 'rgba(' + rgb + ',' + Math.min(1, b).toFixed(3) + ')'; c.lineWidth = 1.2; path(); c.stroke();
-          const e = tr.pts[tr.pts.length - 1];
-          c.fillStyle = 'rgba(' + rgb + ',' + Math.min(1, b * 1.2).toFixed(3) + ')';
-          c.beginPath(); c.arc(e.x, e.y, 1.5 + b * 1.6, 0, 6.29); c.fill();
-        }
-        c.restore();
-      }
-      drawHot(B.hotL, aL, '0,240,255', B.hemiL, false);
-      drawHot(B.hotR, aR, '16,185,129', B.hemiR, false);
-      // Externe Verbindungen: statisch (in texL/texR), nur die Kanten-Pads pulsen ∝ Aktivität
-      function padPulse(set, act, rgb) {
-        for (const wr of set) {
-          const n = wr.pad, pulse = 0.5 + 0.5 * Math.sin(t * 2.2 + n.x * 0.1);
-          c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.45 + 0.35 * pulse)).toFixed(3) + ')';
-          c.beginPath(); c.arc(n.x, n.y, 2.4 + pulse * 1.4, 0, 6.29); c.fill();
-          c.fillStyle = 'rgba(255,255,255,' + (act * (0.5 + 0.3 * pulse)).toFixed(3) + ')';
-          c.beginPath(); c.arc(n.x, n.y, 1.1, 0, 6.29); c.fill();
+          const u = s.p, v = 1 - u;
+          for (let k = 0; k < 5; k++) {   // Trail: 4 Punkte hinter dem Kopf
+            const uk = Math.max(0, u - k * 0.045), vk = 1 - uk;
+            c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.8 - k * 0.14)).toFixed(3) + ')';
+            c.fillRect(vk * vk * ex + 2 * vk * uk * mx + uk * uk * cx - 1.2, vk * vk * ey + 2 * vk * uk * my + uk * uk * cy - 1.2, 2.4, 2.4);
+          }
+          const px = v * v * ex + 2 * v * u * mx + u * u * cx;
+          const py = v * v * ey + 2 * v * u * my + u * u * cy;
+          c.fillStyle = 'rgba(255,255,255,' + (act).toFixed(3) + ')';
+          c.fillRect(px - 1.6, py - 1.6, 3.2, 3.2);
         }
       }
-      padPulse(B.wiresL, aL, '0,240,255');
-      padPulse(B.wiresR, aR, '16,185,129');
-      // Mittellinie = Längsfurche (wie Referenz: helle weiße Linie)
-      const cxm = B.cx;
-      c.lineCap = 'round';
-      c.strokeStyle = 'rgba(226,240,253,0.85)'; c.lineWidth = 1.6;
-      c.beginPath(); c.moveTo(cxm, B.cxTop + 5); c.lineTo(cxm, B.cxBot - 5); c.stroke();
+      drawStreams(-1, aL, 'L');
+      drawStreams(1, aR, 'R');
+
+      // ── Absorptions-Ringe: Kern pulsiert, wenn Tokens ankommen ──
+      function drawRings(key, act, rgb) {
+        const rs = B.rings[key];
+        for (let i = rs.length - 1; i >= 0; i--) {
+          const age = t - rs[i];
+          if (age > 0.9) { rs.splice(i, 1); continue; }
+          const k = age / 0.9;
+          c.strokeStyle = 'rgba(' + rgb + ',' + (0.30 * (1 - k) * act).toFixed(3) + ')';
+          c.lineWidth = 1.5;
+          c.beginPath(); c.arc(cx, cy, R * (1.02 + 0.4 * k), 0, 6.29); c.stroke();
+        }
+      }
+      drawRings('L', aL, '0,240,255');
+      drawRings('R', aR, '16,185,129');
+
+      // ── Kern: pulsierendes Herz (Helligkeit ∝ Gesamtabsatz) ──
+      const coreAct = clamp01((smL + smR) * 0.75);
+      const pulse = 0.5 + 0.5 * Math.sin(t * (1.2 + 3 * coreAct));
+      const g = c.createRadialGradient(cx, cy, 1, cx, cy, R * (0.6 + 0.07 * pulse * coreAct));
+      g.addColorStop(0, 'rgba(248,253,255,' + (0.65 * (0.3 + 0.7 * coreAct)).toFixed(3) + ')');
+      g.addColorStop(0.4, 'rgba(153,246,228,' + (0.28 * (0.25 + 0.75 * coreAct)).toFixed(3) + ')');
+      g.addColorStop(1, 'rgba(94,234,212,0)');
+      c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R * 0.8, 0, 6.29); c.fill();
+
+      // ── Vorderseite: helle Punkte + Nadeln (herausfeuern → einziehen) ──
+      for (const q of front) {
+        const p = q.p;
+        const act = clamp01(smL + (smR - smL) * q.mix);
+        const tw = 0.5 + 0.5 * Math.sin(t * p.sp + p.ph);
+        // Nadel: animierte Länge (out/hold/in), radial vom Punkt nach außen
+        if (!p.vol && p.st !== 'idle') {
+          let e;
+          if (p.st === 'out') { const k = p.stime / 0.30; e = 1 - Math.pow(1 - Math.min(1, k), 3); }      // ease-out: schießt heraus
+          else if (p.st === 'hold') e = 1;
+          else { const k = Math.min(1, p.stime / 0.55); e = Math.pow(1 - k, 2); }                          // ease-in: zieht sich ein
+          p.ext = e;
+          if (e > 0.03) {
+            const nx = (q.px - cx) / R, ny = (q.py - cy) / R;
+            const len = p.nlen * (0.35 + 0.65 * act) * e;
+            c.strokeStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + (0.7 * act).toFixed(3) + ')';
+            c.lineWidth = 1;
+            c.beginPath(); c.moveTo(q.px, q.py); c.lineTo(q.px + nx * len, q.py + ny * len); c.stroke();
+            // Nadel-Spitze leuchtet beim Herausfeuern
+            if (e > 0.5) {
+              c.fillStyle = 'rgba(255,255,255,' + (0.8 * act * e).toFixed(3) + ')';
+              c.fillRect(q.px + nx * len - 1, q.py + ny * len - 1, 2, 2);
+            }
+          }
+        }
+        const b = (p.vol ? 0.25 : 0.38) + 0.62 * act * tw;
+        const sz = (p.vol ? 1.2 : 1.5) + 1.4 * act * tw;
+        c.fillStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + b.toFixed(3) + ')';
+        c.fillRect(q.px - sz / 2, q.py - sz / 2, sz, sz);
+      }
+
+      // ── DUAL: weiches teal-Halo um den Kern (Tensor-Split aktiv) ──
       if (brainData.dual) {
-        // DUAL: teal Glow + Energie-Pulse (Cyan→Emerald über die Mittellinie)
-        const g = c.createLinearGradient(cxm - 13, 0, cxm + 13, 0);
-        g.addColorStop(0, 'rgba(0,240,255,0)');
-        g.addColorStop(0.5, 'rgba(204,251,241,' + (0.30 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
-        g.addColorStop(1, 'rgba(16,185,129,0)');
-        c.fillStyle = g; c.fillRect(cxm - 13, B.cxTop, 26, B.cxBot - B.cxTop);
-        for (let i = 0; i < 7; i++) {
-          const y = B.cxTop + ((t * (24 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
-          c.strokeStyle = 'rgba(255,255,255,0.95)'; c.lineWidth = 1.6;
-          c.beginPath(); c.moveTo(cxm, y); c.lineTo(cxm, y + 7); c.stroke();
-        }
+        const dg = c.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.15);
+        dg.addColorStop(0, 'rgba(45,212,191,' + (0.08 + 0.03 * Math.sin(t * 3)).toFixed(3) + ')');
+        dg.addColorStop(0.6, 'rgba(45,212,191,' + (0.05 + 0.02 * Math.sin(t * 3)).toFixed(3) + ')');
+        dg.addColorStop(1, 'rgba(45,212,191,0)');
+        c.fillStyle = dg; c.beginPath(); c.arc(cx, cy, R * 1.15, 0, 6.29); c.fill();
       }
     }
 
