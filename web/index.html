@@ -412,12 +412,16 @@
       const t = now / 1000;
       const dt = Math.min(0.05, (now - brainLast) / 1000 || 0.016); brainLast = now;
 
-      // Aktivität: Load als Basis; aktive Inferenz zündet die Seite; DUAL → beide
+      // Aktivität: Load als Basis; aktive Inferenz skaliert mit t/s (wenig Last = wenig Ausschlag, viel Last = hoher);
+      // DUAL → beide Seiten
       let actL = brainData.online ? 0.95 * (brainData.load0 / 100) : 0;
       let actR = brainData.online ? 0.95 * (brainData.load1 / 100) : 0;
-      if (brainData.tps0 > 0) actL = Math.max(actL, 0.8);
-      if (brainData.tps1 > 0) actR = Math.max(actR, 0.8);
-      if (brainData.dual) { actL = Math.max(actL, 0.85); actR = Math.max(actR, 0.85); }
+      if (brainData.tps0 > 0) actL = Math.max(actL, Math.min(1, brainData.tps0 / 45));
+      if (brainData.tps1 > 0) actR = Math.max(actR, Math.min(1, brainData.tps1 / 45));
+      if (brainData.dual) {
+        const td = Math.min(1, ((brainData.tps0 || 0) + (brainData.tps1 || 0)) / 70);
+        actL = Math.max(actL, td); actR = Math.max(actR, td);
+      }
       const idle = 0.06 + 0.03 * Math.sin(t * 0.8);
       const aL = Math.max(idle, actL), aR = Math.max(idle, actR);
       smL += (aL - smL) * Math.min(1, dt * 4);
@@ -447,7 +451,7 @@
         const p = q.p;
         if (p.st === 'idle') {
           const act = clamp01(smL + (smR - smL) * ((p.x * cA + p.z * sA) * 0.5 + 0.5));
-          if (act > 0.1 && Math.random() < dt * (3.2 * act)) { p.st = 'out'; p.stime = 0; }
+          if (act > 0.1 && Math.random() < dt * (4.5 * act * act)) { p.st = 'out'; p.stime = 0; }   // superlinear: wenig Last = selten, viel Last = dicht
         } else if (p.st === 'out') {
           p.stime += dt;
           if (p.stime >= 0.28) { p.st = 'hold'; p.stime = 0; p.hd = 0.05 + Math.random() * 0.24; }
@@ -509,7 +513,7 @@
         const act = clamp01(smL + (smR - smL) * q.mix);
         const rgb = ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0);
         const nx = (q.px - cx) / R, ny = (q.py - cy) / R;
-        const len = p.nlen * (0.35 + 0.65 * act) * e;
+        const len = p.nlen * (0.12 + 0.88 * Math.pow(act, 1.5)) * e;   // Ausschlag skaliert mit Last: wenig = kurz, viel = lang
         const al = (q.back ? 0.4 : 0.75) * act;
         c.strokeStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')';
         c.lineWidth = 1;
