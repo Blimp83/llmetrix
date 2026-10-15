@@ -87,24 +87,27 @@
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
       </div>
-      <div>
-        <div class="text-[10px] text-slate-400">GPU LOAD</div>
-        <div class="text-3xl font-black text-cyan-300 glow-cyan" id="gpu0-load">-- %</div>
-        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu0-load-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
-      </div>
-      <div>
-        <div class="text-[10px] text-slate-400">VRAM</div>
-        <div class="text-sm font-bold text-cyan-200" id="gpu0-vram">-- / -- GB</div>
-        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu0-vram-bar" class="h-full bg-cyan-600 rounded transition-all duration-500" style="width:0%"></div></div>
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-center pt-1">
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
-          <div class="text-[9px] text-slate-400">TEMP</div>
-          <div class="text-base font-bold text-cyan-400"><span id="gpu0-temp">--</span>&deg;C</div>
+      <!-- 4 gleich große Donuts: LOAD / VRAM / TEMP / POWER (2×2) -->
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">GPU LOAD</div>
+          <svg id="gpu0-d-load" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu0-d-load-cap" class="text-[9px] text-slate-500">of 100%</div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
-          <div class="text-[9px] text-slate-400">POWER</div>
-          <div class="text-base font-bold text-cyan-300"><span id="gpu0-power">--</span> W</div>
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">VRAM</div>
+          <svg id="gpu0-d-vram" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu0-d-vram-cap" class="text-[9px] text-slate-500">of -- GB</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">TEMP</div>
+          <svg id="gpu0-d-temp" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu0-d-temp-cap" class="text-[9px] text-slate-500">max 100°C</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">POWER</div>
+          <svg id="gpu0-d-power" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu0-d-power-cap" class="text-[9px] text-slate-500">of -- W</div>
         </div>
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-cyan-500/20 pt-2">
@@ -181,24 +184,27 @@
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
       </div>
-      <div>
-        <div class="text-[10px] text-slate-400">GPU LOAD</div>
-        <div class="text-3xl font-black text-emerald-300 glow-emerald" id="gpu1-load">-- %</div>
-        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu1-load-bar" class="h-full bg-emerald-400 rounded transition-all duration-500" style="width:0%"></div></div>
-      </div>
-      <div>
-        <div class="text-[10px] text-slate-400">VRAM</div>
-        <div class="text-sm font-bold text-emerald-200" id="gpu1-vram">-- / -- GB</div>
-        <div class="bar-track h-1.5 rounded mt-1"><div id="gpu1-vram-bar" class="h-full bg-emerald-600 rounded transition-all duration-500" style="width:0%"></div></div>
-      </div>
-      <div class="grid grid-cols-2 gap-2 text-center pt-1">
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
-          <div class="text-[9px] text-slate-400">TEMP</div>
-          <div class="text-base font-bold text-emerald-400"><span id="gpu1-temp">--</span>&deg;C</div>
+      <!-- 4 gleich große Donuts: LOAD / VRAM / TEMP / POWER (2×2) -->
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">GPU LOAD</div>
+          <svg id="gpu1-d-load" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu1-d-load-cap" class="text-[9px] text-slate-500">of 100%</div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
-          <div class="text-[9px] text-slate-400">POWER</div>
-          <div class="text-base font-bold text-emerald-300"><span id="gpu1-power">--</span> W</div>
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">VRAM</div>
+          <svg id="gpu1-d-vram" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu1-d-vram-cap" class="text-[9px] text-slate-500">of -- GB</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">TEMP</div>
+          <svg id="gpu1-d-temp" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu1-d-temp-cap" class="text-[9px] text-slate-500">max 100°C</div>
+        </div>
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
+          <div class="text-[9px] text-slate-400 tracking-wider">POWER</div>
+          <svg id="gpu1-d-power" width="64" height="64" viewBox="0 0 46 46"></svg>
+          <div id="gpu1-d-power-cap" class="text-[9px] text-slate-500">of -- W</div>
         </div>
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-emerald-500/20 pt-2">
@@ -339,6 +345,7 @@
     // Unsichtbare rotierende Sphäre: Nadeln feuern von den Ankerpunkten heraus → halten → ziehen sich ein.
     // Trigger-Rate + Länge ∝ GPU-Aktivität. Token-Streams fließen von den Kanten in den Kern (∝ t/s).
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
+    let powerLimitW = 180;                    // Max-Power der Karte (aus /api/metrics, Default RTX 5060 Ti)
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für ORB-Tile
 
@@ -554,17 +561,33 @@
     const gb = mib => (mib / 1024).toFixed(1);
     function log(msg, cls) { const el = $('live-log'); el.innerText = msg; el.className = cls || 'text-cyan-400'; }
 
+    // ── GPU-Donut: Ring = Anteil am Maximum, grauer Rest = frei; Mitte = Wert + Einheit ──
+    function drawGpuDonut(svgId, capId, frac, centerText, unit, color) {
+      const svg = $(svgId); if (!svg) return;
+      const p = Math.max(0, Math.min(1.05, frac));
+      const r = 18, C = 2 * Math.PI * r;
+      const col = p > 0.92 ? '#fbbf24' : color;   // >92% = Warn-Farbe (hot), sonst Kartenfarbe
+      svg.innerHTML =
+        '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="5"/>' +
+        (p > 0.002 ? '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="5" ' +
+          'stroke-dasharray="' + (C * Math.min(1, p)).toFixed(2) + ' ' + C.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 23 23)"/>' : '') +
+        '<text x="23" y="26" text-anchor="middle" font-size="10" font-weight="bold" fill="#e2e8f0">' + centerText + '</text>';
+      if (capId) $(capId).innerText = unit;
+    }
+
     function setGpuCard(slot, g) {
       // slot: 'gpu0' | 'gpu1', g: {load, vram_used_mib, vram_total_mib, temp_c, power_w}
+      const col = slot === 'gpu0' ? '#22d3ee' : '#34d399';   // cyan / emerald
       const load = Math.round(g.load || 0);
-      $(slot + '-load').innerText = load + ' %';
-      $(slot + '-load-bar').style.width = load + '%';
-      if (g.vram_total_mib) {
-        $(slot + '-vram').innerText = `${gb(g.vram_used_mib)} / ${gb(g.vram_total_mib)} GB`;
-        $(slot + '-vram-bar').style.width = Math.min(100, (g.vram_used_mib / g.vram_total_mib) * 100).toFixed(1) + '%';
+      drawGpuDonut(slot + '-d-load', slot + '-d-load-cap', (g.load || 0) / 100, String(load), 'of 100%', col);
+      const vramT = g.vram_total_mib || 0;
+      if (vramT) {
+        drawGpuDonut(slot + '-d-vram', slot + '-d-vram-cap', (g.vram_used_mib || 0) / vramT,
+          ((g.vram_used_mib || 0) / 1024).toFixed(1), 'of ' + (vramT / 1024).toFixed(1) + ' GB', col);
       }
-      if (g.temp_c != null) $(slot + '-temp').innerText = Math.round(g.temp_c);
-      if (g.power_w != null) $(slot + '-power').innerText = Math.round(g.power_w);
+      if (g.temp_c != null) drawGpuDonut(slot + '-d-temp', slot + '-d-temp-cap', g.temp_c / 100, String(Math.round(g.temp_c)), 'max 100\u00B0C', col);
+      const pl = powerLimitW || 180;
+      drawGpuDonut(slot + '-d-power', slot + '-d-power-cap', (g.power_w || 0) / pl, String(Math.round(g.power_w || 0)), 'of ' + Math.round(pl) + ' W', col);
     }
 
     function setCore(source, model) {
@@ -769,6 +792,7 @@
         }
 
         const g0 = m.gpus && m.gpus['0'], g1 = m.gpus && m.gpus['1'];
+        if (m.power_limit_w) powerLimitW = m.power_limit_w;
         if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); }
         if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); }
         brainUpdate();

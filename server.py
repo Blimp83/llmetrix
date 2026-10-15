@@ -20,6 +20,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PROM_URL = os.environ.get("LMPROM_URL", "http://192.168.178.22:9090")
 DCGM_URL = os.environ.get("LM_DCGM_URL", "http://192.168.178.40:9400")   # direkter Exporter-Scrape (~17 ms) statt Prometheus (5–15 s Latenz)
+POWER_LIMIT_W = float(os.environ.get("LM_POWER_LIMIT_W", "180"))   # Max-Power der Karte (RTX 5060 Ti = 180 W) — für den Power-Donut
 OLLAMA_EP = {
     "gpu0": os.environ.get("LM_OLLAMA_GPU0", "https://rtx-gpu0.obsy.icu"),
     "gpu1": os.environ.get("LM_OLLAMA_GPU1", "https://rtx-gpu1.obsy.icu"),
@@ -261,6 +262,7 @@ def build_metrics():
         "ai_server_online": ai_online,
         "gpus": gpus,
         "ollama": ollama,
+        "power_limit_w": POWER_LIMIT_W,
     }
 
 
