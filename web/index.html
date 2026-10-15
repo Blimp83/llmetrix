@@ -361,15 +361,23 @@
         });
       }
 
-      // ── Token-Streams: Partikel fließen von den Kanten (links=GPU0/cyan, rechts=GPU1/emerald) in den Kern ──
-      function mkStream() {
+      // ── Token-Streams: Bits ('0'/'1') spawnen zufällig aus der Binär-Matrix (links=GPU0/cyan, rechts=GPU1/emerald) und fliegen in den Kern ──
+      B.spawnBit = (side) => {   // side: -1 links, +1 rechts — Spawn-Punkt innerhalb der Matrix-Hälfte
+        const cx = B.w / 2;
+        const R = Math.min(B.h * 0.40, B.w * 0.16);
+        const lo = side < 0 ? 8 : cx + R * 0.9, hi = side < 0 ? cx - R * 0.9 : B.w - 8;
+        return { x: lo + Math.random() * Math.max(20, hi - lo), y: 6 + Math.random() * (B.h - 12), g: Math.random() < 0.5 ? '0' : '1' };
+      };
+      function mkStream(side) {
         const arr = [];
         for (let i = 0; i < 30; i++) {
-          arr.push({ y: h / 2 + (Math.random() - 0.5) * h * 1.15, p: Math.random(), sp: 0.3 + Math.random() * 0.55 });
+          const s = { p: Math.random(), sp: 0.3 + Math.random() * 0.55 };
+          const np = B.spawnBit(side); s.x = np.x; s.y = np.y; s.g = np.g;
+          arr.push(s);
         }
         return arr;
       }
-      B.streams = { L: mkStream(), R: mkStream() };
+      B.streams = { L: mkStream(-1), R: mkStream(1) };
 
       // ── Binär-Regen-Hintergrund (statische Textur, scrollt langsam) ──
       const rain = document.createElement('canvas');
@@ -378,8 +386,8 @@
       rc.font = '9px monospace';
       for (let x = 6; x < w; x += 13) {
         for (let y = 8; y < h * 2; y += 12) {
-          const a = 0.02 + Math.random() * 0.09;
-          rc.fillStyle = Math.random() < 0.12 ? 'rgba(165,243,252,' + (a * 1.8).toFixed(3) + ')' : 'rgba(125,211,252,' + a.toFixed(3) + ')';
+          const a = 0.05 + Math.random() * 0.12;
+          rc.fillStyle = Math.random() < 0.14 ? 'rgba(207,250,254,' + (a * 2.2).toFixed(3) + ')' : 'rgba(125,211,252,' + a.toFixed(3) + ')';
           rc.fillText(Math.random() < 0.5 ? '0' : '1', x, y);
         }
       }
@@ -464,28 +472,30 @@
         }
       }
 
-      // ── Token-Streams: Kante → Kern (nur bei Aktivität auf der Seite) ──
+      // ── Token-Streams: Bits fliegen aus der Matrix (links/rechts) → Kern (nur bei Aktivität auf der Seite) ──
       function drawStreams(side, act, key) {
         if (act < 0.12) return;
-        const rgb = side < 0 ? '0,240,255' : '16,185,129';
-        const ex = side < 0 ? -8 : w + 8;
+        const base = side < 0 ? [0, 240, 255] : [16, 185, 129];
+        c.font = '10px monospace';
         for (const s of B.streams[key]) {
-          const ey = s.y;
-          const mx = (ex + cx) / 2, my = (ey + cy) / 2 + (ey > cy ? 14 : -14);
           s.p += dt * s.sp * (0.5 + 3.2 * act);
-          if (s.p >= 1) {   // im Kern absorbiert → neu starten
-            s.p = 0; s.y = cy + (Math.random() - 0.5) * h * 1.15; s.sp = 0.3 + Math.random() * 0.55;
+          if (s.p >= 1) {   // im Kern absorbiert → neues Bit spawnt aus der Matrix
+            s.p = 0; s.sp = 0.3 + Math.random() * 0.55;
+            const np = B.spawnBit(side); s.x = np.x; s.y = np.y; s.g = np.g;
           }
-          const u = s.p, v = 1 - u;
-          for (let k = 0; k < 5; k++) {   // Trail: 4 Punkte hinter dem Kopf
-            const uk = Math.max(0, u - k * 0.045), vk = 1 - uk;
-            c.fillStyle = 'rgba(' + rgb + ',' + (act * (0.8 - k * 0.14)).toFixed(3) + ')';
-            c.fillRect(vk * vk * ex + 2 * vk * uk * mx + uk * uk * cx - 1.2, vk * vk * ey + 2 * vk * uk * my + uk * uk * cy - 1.2, 2.4, 2.4);
+          const u = s.p;
+          const mx = (s.x + cx) / 2, my = (s.y + cy) / 2 + (s.y > cy ? 14 : -14);
+          const pos = k => { const kk = 1 - k; return [kk * kk * s.x + 2 * kk * k * mx + k * k * cx, kk * kk * s.y + 2 * kk * k * my + k * k * cy]; };
+          for (let k = 2; k >= 1; k--) {   // Trail: 2 Geister hinter dem Bit
+            const [gx, gy] = pos(Math.max(0, u - k * 0.05));
+            c.fillStyle = 'rgba(' + base[0] + ',' + base[1] + ',' + base[2] + ',' + (act * (0.4 - k * 0.1)).toFixed(3) + ')';
+            c.fillText(s.g, gx, gy);
           }
-          const px = v * v * ex + 2 * v * u * mx + u * u * cx;
-          const py = v * v * ey + 2 * v * u * my + u * u * cy;
-          c.fillStyle = 'rgba(255,255,255,' + (act).toFixed(3) + ')';
-          c.fillRect(px - 1.6, py - 1.6, 3.2, 3.2);
+          const [px, py] = pos(u);
+          const wh = u * u * 0.75;   // Richtung Kern wird das Bit weißer (Absorption)
+          const r = Math.round(base[0] + (255 - base[0]) * wh), gg = Math.round(base[1] + (255 - base[1]) * wh), b = Math.round(base[2] + (255 - base[2]) * wh);
+          c.fillStyle = 'rgba(' + r + ',' + gg + ',' + b + ',' + act.toFixed(3) + ')';
+          c.fillText(s.g, px, py);
         }
       }
       drawStreams(-1, aL, 'L');
