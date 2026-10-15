@@ -27,10 +27,11 @@
       background: rgba(8, 28, 18, 0.85); backdrop-filter: blur(12px); border: 1px solid #10b981;
       box-shadow: 0 0 20px rgba(16, 185, 129, 0.2), inset 0 0 15px rgba(16, 185, 129, 0.1);
     }
-    .cyber-card-amber {
-      background: rgba(24, 18, 6, 0.85); backdrop-filter: blur(12px); border: 1px solid #f59e0b;
-      box-shadow: 0 0 20px rgba(245, 158, 11, 0.15), inset 0 0 15px rgba(245, 158, 11, 0.08);
+    .cyber-card-core {
+      background: linear-gradient(135deg, rgba(4, 18, 26, 0.9), rgba(6, 24, 20, 0.9)); backdrop-filter: blur(12px); border: 1px solid #2dd4bf;
+      box-shadow: 0 0 20px rgba(45, 212, 191, 0.15), inset 0 0 15px rgba(45, 212, 191, 0.07);
     }
+    .glow-core { text-shadow: 0 0 12px #2dd4bf; }
     .glow-cyan { text-shadow: 0 0 12px #00f0ff; }
     .glow-emerald { text-shadow: 0 0 12px #10b981; }
     .glow-amber { text-shadow: 0 0 12px #f59e0b; }
@@ -65,7 +66,7 @@
   </header>
 
   <!-- Stats Overlay: GPU0 | CORE KPI | GPU1 (Kacheln verschiebbar) -->
-  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-0 pointer-events-none items-stretch lg:my-auto">
+  <div id="main-grid" class="relative z-10 grid grid-cols-12 gap-0 pointer-events-none items-stretch">
 
     <!-- NEURAL BRAIN // GPU-AKTIVITÄTS-KARTE (2D) -->
     <div id="panel-brain" class="draggable-card col-span-12 cyber-card p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto">
@@ -112,54 +113,54 @@
     </div>
 
     <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
-    <div id="panel-core" class="draggable-card col-span-12 lg:col-span-6 cyber-card-amber p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
-      <div class="flex justify-between items-center border-b border-amber-500/30 pb-2">
-        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-amber-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-amber-400 glow-amber">CORE // ACTIVE MODEL</span></span>
+    <div id="panel-core" class="draggable-card col-span-12 lg:col-span-6 cyber-card-core p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+      <div class="flex justify-between items-center border-b border-teal-500/30 pb-2">
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-teal-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-teal-300 glow-core">CORE // ACTIVE MODEL</span></span>
         <span class="flex items-center gap-2">
           <span id="live-badge" class="text-[10px] text-slate-500 font-bold">○ KEINE AKTIVE ERZEUGUNG</span>
           <span id="mtp-badge" class="hidden text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50 font-mono" title="MTP-Draft: Acceptance-Rate + Ø akzeptierte Länge pro Draft">--</span>
-          <span class="text-[10px] bg-amber-950 text-amber-300 px-2 py-0.5 rounded border border-amber-500/50" id="core-source">--</span>
+          <span class="text-[10px] bg-teal-950 text-teal-300 px-2 py-0.5 rounded border border-teal-500/50" id="core-source">--</span>
         </span>
       </div>
       <div class="flex items-end justify-between gap-4">
         <div class="min-w-0">
           <div class="text-[10px] text-slate-400">MODEL</div>
-          <div class="text-xl font-black text-amber-200 truncate" id="core-model">KEIN MODELL GELADEN</div>
+          <div class="text-xl font-black text-cyan-100 truncate" id="core-model">KEIN MODELL GELADEN</div>
           <div class="text-xs text-slate-400 mt-1">
             <span id="core-params">--</span> &middot; <span id="core-quant">--</span> &middot; CTX <span id="core-ctx">--</span>
           </div>
         </div>
         <div class="text-right shrink-0">
           <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
-          <div class="text-2xl font-black text-amber-300 glow-amber" id="core-vram">-- GB</div>
+          <div class="text-2xl font-black text-teal-300 glow-core" id="core-vram">-- GB</div>
         </div>
       </div>
 
       <!-- Sparklines -->
       <div class="grid grid-cols-2 gap-3">
-        <div class="bg-slate-900/90 p-2 rounded border border-amber-500/20">
-          <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>GENERATION tk/s — LIVE</span><span id="spark-gen-now" class="text-amber-300 font-bold">--</span></div>
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
+          <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>GENERATION tk/s — LIVE</span><span id="spark-gen-now" class="text-teal-300 font-bold">--</span></div>
           <canvas id="spark-gen" width="420" height="56" class="w-full h-14"></canvas>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-amber-500/20">
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
           <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>PROMPT EVAL tk/s — LIVE</span><span id="spark-prompt-now" class="text-cyan-300 font-bold">--</span></div>
           <canvas id="spark-prompt" width="420" height="56" class="w-full h-14"></canvas>
         </div>
       </div>
 
       <!-- letzte Benchmark -->
-      <div class="text-[11px] text-slate-400 border-t border-amber-500/20 pt-2">
-        LAST BENCHMARK: <span id="last-bench" class="text-amber-300 font-bold">noch keine Messung</span>
+      <div class="text-[11px] text-slate-400 border-t border-teal-500/20 pt-2">
+        LAST BENCHMARK: <span id="last-bench" class="text-teal-300 font-bold">noch keine Messung</span>
       </div>
 
       <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show) -->
-      <div id="spec-block" class="hidden bg-slate-950/80 border border-amber-500/25 rounded p-2.5">
+      <div id="spec-block" class="hidden bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
         <div class="flex justify-between items-center mb-1.5 gap-2">
-          <span class="text-[9px] font-bold tracking-widest text-amber-400/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-amber-950 text-amber-300 px-1.5 py-0.5 rounded border border-amber-500/50 ml-1">--</span></span>
+          <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
           <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
         </div>
         <div class="text-[10px] leading-relaxed text-slate-300 font-mono space-y-0.5">
-          <div><span class="text-slate-500">ARCH</span> <span id="spec-arch" class="text-amber-200 font-bold">--</span> · <span id="spec-size">--</span> · Q<span id="spec-quant">--</span> · CTX <span id="spec-ctx">--</span></div>
+          <div><span class="text-slate-500">ARCH</span> <span id="spec-arch" class="text-cyan-200 font-bold">--</span> · <span id="spec-size">--</span> · Q<span id="spec-quant">--</span> · CTX <span id="spec-ctx">--</span></div>
           <div><span class="text-slate-500">BUILD</span> <span id="spec-build">--</span></div>
           <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
         </div>
@@ -760,7 +761,7 @@
       lastLiveAll = {}; usable.forEach(x => { lastLiveAll[x.src] = x.d; });
       brainUpdate();
       const pts = best.d.points || [];
-      drawSpark('spark-gen', pts.filter(p => p.kind === 'gen').map(p => [p.t, p.tg]), 'rgb(251,191,36)');
+      drawSpark('spark-gen', pts.filter(p => p.kind === 'gen').map(p => [p.t, p.tg]), 'rgb(45,212,191)');
       drawSpark('spark-prompt', pts.filter(p => p.kind === 'prompt').map(p => [p.t, p.tps]), 'rgb(34,211,238)');
       lastLiveSrc = best.src;   // Spec-Block: aktive Quelle des MODEL-SPEC nachziehen
 
