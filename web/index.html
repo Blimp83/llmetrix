@@ -860,8 +860,8 @@
     refreshLiveTps();
     setLogTabStyle();
     refreshLogs();
-    setInterval(pollMetrics, 2000);
-    setInterval(refreshLiveTps, 4000);
+    setInterval(pollMetrics, 1000);   // GPU-Last ~live (DCGM-Scrape 1 s) → Polling 1 s
+    setInterval(refreshLiveTps, 2000);
     setInterval(refreshLogs, 4000);
   </script>
 </body>
