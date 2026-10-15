@@ -87,27 +87,39 @@
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
       </div>
-      <!-- 4 gleich große Donuts: LOAD / VRAM / TEMP / POWER (2×2) -->
-      <div class="grid grid-cols-2 gap-2">
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">GPU LOAD</div>
-          <svg id="gpu0-d-load" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu0-d-load-cap" class="text-[9px] text-slate-500">of 100%</div>
+      <!-- 4 Icons (Cyberpunk): LOAD=Tacho / VRAM=3D-Quader / TEMP=Thermometer / POWER=Energiezelle — Wert groß rechts neben dem Symbol -->
+      <div class="grid grid-cols-2 gap-1.5 sm:gap-2">
+        <div class="bg-slate-900/90 p-1.5 rounded border border-cyan-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu0-i-load" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">LOAD</div>
+            <div id="gpu0-v-load" class="font-black text-cyan-300 text-base sm:text-2xl">--</div>
+            <div id="gpu0-c-load" class="text-[8px] text-slate-500 mt-0.5 truncate">of 100%</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">VRAM</div>
-          <svg id="gpu0-d-vram" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu0-d-vram-cap" class="text-[9px] text-slate-500">of -- GB</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-cyan-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu0-i-vram" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">VRAM</div>
+            <div id="gpu0-v-vram" class="font-black text-cyan-300 text-base sm:text-2xl">--</div>
+            <div id="gpu0-c-vram" class="text-[8px] text-slate-500 mt-0.5 truncate">of -- GB</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">TEMP</div>
-          <svg id="gpu0-d-temp" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu0-d-temp-cap" class="text-[9px] text-slate-500">max 100°C</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-cyan-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu0-i-temp" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">TEMP</div>
+            <div id="gpu0-v-temp" class="font-black text-cyan-300 text-base sm:text-2xl">--</div>
+            <div id="gpu0-c-temp" class="text-[8px] text-slate-500 mt-0.5 truncate">max 100&deg;C</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">POWER</div>
-          <svg id="gpu0-d-power" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu0-d-power-cap" class="text-[9px] text-slate-500">of -- W</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-cyan-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu0-i-power" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">POWER</div>
+            <div id="gpu0-v-power" class="font-black text-cyan-300 text-base sm:text-2xl">--</div>
+            <div id="gpu0-c-power" class="text-[8px] text-slate-500 mt-0.5 truncate">of -- W</div>
+          </div>
         </div>
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-cyan-500/20 pt-2">
@@ -184,27 +196,39 @@
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
       </div>
-      <!-- 4 gleich große Donuts: LOAD / VRAM / TEMP / POWER (2×2) -->
-      <div class="grid grid-cols-2 gap-2">
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">GPU LOAD</div>
-          <svg id="gpu1-d-load" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu1-d-load-cap" class="text-[9px] text-slate-500">of 100%</div>
+      <!-- 4 Icons (Cyberpunk): LOAD=Tacho / VRAM=3D-Quader / TEMP=Thermometer / POWER=Energiezelle — Wert groß rechts neben dem Symbol -->
+      <div class="grid grid-cols-2 gap-1.5 sm:gap-2">
+        <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu1-i-load" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">LOAD</div>
+            <div id="gpu1-v-load" class="font-black text-emerald-300 text-base sm:text-2xl">--</div>
+            <div id="gpu1-c-load" class="text-[8px] text-slate-500 mt-0.5 truncate">of 100%</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">VRAM</div>
-          <svg id="gpu1-d-vram" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu1-d-vram-cap" class="text-[9px] text-slate-500">of -- GB</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu1-i-vram" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">VRAM</div>
+            <div id="gpu1-v-vram" class="font-black text-emerald-300 text-base sm:text-2xl">--</div>
+            <div id="gpu1-c-vram" class="text-[8px] text-slate-500 mt-0.5 truncate">of -- GB</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">TEMP</div>
-          <svg id="gpu1-d-temp" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu1-d-temp-cap" class="text-[9px] text-slate-500">max 100°C</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu1-i-temp" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">TEMP</div>
+            <div id="gpu1-v-temp" class="font-black text-emerald-300 text-base sm:text-2xl">--</div>
+            <div id="gpu1-c-temp" class="text-[8px] text-slate-500 mt-0.5 truncate">max 100&deg;C</div>
+          </div>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 flex flex-col items-center">
-          <div class="text-[9px] text-slate-400 tracking-wider">POWER</div>
-          <svg id="gpu1-d-power" width="64" height="64" viewBox="0 0 46 46"></svg>
-          <div id="gpu1-d-power-cap" class="text-[9px] text-slate-500">of -- W</div>
+        <div class="bg-slate-900/90 p-1.5 rounded border border-emerald-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
+          <canvas id="gpu1-i-power" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
+          <div class="flex flex-col min-w-0 leading-none">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">POWER</div>
+            <div id="gpu1-v-power" class="font-black text-emerald-300 text-base sm:text-2xl">--</div>
+            <div id="gpu1-c-power" class="text-[8px] text-slate-500 mt-0.5 truncate">of -- W</div>
+          </div>
         </div>
       </div>
       <div class="mt-auto space-y-0.5 text-xs text-slate-400 border-t border-emerald-500/20 pt-2">
@@ -561,33 +585,213 @@
     const gb = mib => (mib / 1024).toFixed(1);
     function log(msg, cls) { const el = $('live-log'); el.innerText = msg; el.className = cls || 'text-cyan-400'; }
 
-    // ── GPU-Donut: Ring = Anteil am Maximum, grauer Rest = frei; Mitte = Wert + Einheit ──
-    function drawGpuDonut(svgId, capId, frac, centerText, unit, color) {
-      const svg = $(svgId); if (!svg) return;
-      const p = Math.max(0, Math.min(1.05, frac));
-      const r = 18, C = 2 * Math.PI * r;
-      const col = p > 0.92 ? '#f87171' : color;   // >92% = Warn-Rot (hot, im Schema: offline-Status nutzt es auch), sonst Kartenfarbe
-      svg.innerHTML =
-        '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="5"/>' +
-        (p > 0.002 ? '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="' + col + '" stroke-width="5" ' +
-          'stroke-dasharray="' + (C * Math.min(1, p)).toFixed(2) + ' ' + C.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 23 23)"/>' : '') +
-        '<text x="23" y="26" text-anchor="middle" font-size="10" font-weight="bold" fill="#e2e8f0">' + centerText + '</text>';
-      if (capId) $(capId).innerText = unit;
+    // ── GPU-Icons (Cyberpunk): Tacho / 3D-VRAM-Quader / Thermometer / Energiezelle ──
+    // Alle Icons zeichnen in einem Referenz-Koordinatensystem 64×84 und skalieren automatisch
+    // auf die Canvas-Größe (Mobile klein, Desktop groß) — gleiche Optik überall.
+    function rr(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
+    }
+    function iconCtx(id) {
+      const cv = $(id); if (!cv) return null;
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const w = cv.clientWidth || 64, h = cv.clientHeight || 84;
+      if (cv.width !== Math.round(w * dpr) || cv.height !== Math.round(h * dpr)) { cv.width = Math.round(w * dpr); cv.height = Math.round(h * dpr); }
+      const ctx = cv.getContext('2d');
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, w, h);
+      const s = Math.min(w / 64, h / 84);
+      ctx.setTransform(dpr * s, 0, 0, dpr * s, dpr * (w - 64 * s) / 2, dpr * (h - 84 * s) / 2);
+      return ctx;
+    }
+
+    // LOAD: Tachometer — 270°-Bogen, Skala, Glow-Bogen, Nadel
+    function drawTacho(id, load, col) {
+      const ctx = iconCtx(id); if (!ctx) return;
+      const cx = 32, cy = 38, R = 24;
+      const a0 = Math.PI * 0.75, a1 = Math.PI * 2.25;
+      const p = Math.max(0, Math.min(1, load / 100));
+      const colv = load > 92 ? '#f87171' : col;
+      ctx.lineCap = 'round';
+      ctx.strokeStyle = 'rgba(148,163,184,0.2)'; ctx.lineWidth = 4.5;
+      ctx.beginPath(); ctx.arc(cx, cy, R, a0, a1); ctx.stroke();
+      for (let i = 0; i <= 10; i++) {
+        const a = a0 + (a1 - a0) * i / 10;
+        const r1 = R - 6.5, r2 = R - (i % 5 === 0 ? 12 : 9);
+        ctx.strokeStyle = i % 5 === 0 ? 'rgba(226,232,240,0.55)' : 'rgba(148,163,184,0.35)';
+        ctx.lineWidth = i % 5 === 0 ? 1.6 : 1;
+        ctx.beginPath();
+        ctx.moveTo(cx + Math.cos(a) * r1, cy + Math.sin(a) * r1);
+        ctx.lineTo(cx + Math.cos(a) * r2, cy + Math.sin(a) * r2);
+        ctx.stroke();
+      }
+      if (p > 0.01) {
+        ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 9;
+        ctx.strokeStyle = colv; ctx.lineWidth = 4.5;
+        ctx.beginPath(); ctx.arc(cx, cy, R, a0, a0 + (a1 - a0) * p); ctx.stroke();
+        ctx.restore();
+      }
+      const na = a0 + (a1 - a0) * p;
+      ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 7;
+      ctx.strokeStyle = '#e2e8f0'; ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      ctx.moveTo(cx + Math.cos(na) * R * 0.3, cy + Math.sin(na) * R * 0.3);
+      ctx.lineTo(cx + Math.cos(na) * (R - 14), cy + Math.sin(na) * (R - 14));
+      ctx.stroke();
+      ctx.fillStyle = '#e2e8f0';
+      ctx.beginPath(); ctx.arc(cx, cy, 3.2, 0, 7); ctx.fill();
+      ctx.restore();
+    }
+
+    // VRAM: 3D-Quader (hochkant, transparentes Glas), Füllung + 25%-Skala
+    function drawVramBox(id, usedGb, totalGb, col) {
+      const ctx = iconCtx(id); if (!ctx) return;
+      const bw = 28, bh = 60, dx = 14, dy = -9;
+      const x = 17, y = 8;                       // Front-Fläche
+      const p = totalGb > 0 ? Math.max(0, Math.min(1, usedGb / totalGb)) : 0;
+      const colv = p > 0.92 ? '#f87171' : col;
+      // 3D-Flächen (Seite rechts, Deckel oben)
+      ctx.fillStyle = 'rgba(148,163,184,0.14)';
+      ctx.beginPath(); ctx.moveTo(x+bw, y); ctx.lineTo(x+bw+dx, y+dy); ctx.lineTo(x+bw+dx, y+dy+bh); ctx.lineTo(x+bw, y+bh); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = 'rgba(226,232,240,0.12)';
+      ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x+dx, y+dy); ctx.lineTo(x+bw+dx, y+dy); ctx.lineTo(x+bw, y); ctx.closePath(); ctx.fill();
+      // Front: dunkles Glas
+      ctx.fillStyle = 'rgba(15,23,42,0.92)';
+      ctx.fillRect(x, y, bw, bh);
+      // Füllung (Liquid, Glow + helle Oberfläche)
+      const fh = bh * p;
+      if (fh > 0.5) {
+        ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 12;
+        const g = ctx.createLinearGradient(0, y + bh - fh, 0, y + bh);
+        g.addColorStop(0, colv); g.addColorStop(0.35, colv); g.addColorStop(1, 'rgba(2,6,23,0.55)');
+        ctx.fillStyle = g;
+        ctx.fillRect(x, y + bh - fh, bw, fh);
+        ctx.restore();
+        ctx.fillStyle = 'rgba(248,253,255,0.95)';
+        ctx.fillRect(x, y + bh - fh - 1.5, bw, 2);
+      }
+      // Skala: Linien alle 25% (Front + Seiten-Ticks)
+      for (let i = 1; i <= 3; i++) {
+        const yy = y + bh - bh * i / 4;
+        ctx.strokeStyle = 'rgba(226,232,240,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + bw, yy); ctx.stroke();
+        ctx.beginPath(); ctx.moveTo(x+bw, yy); ctx.lineTo(x+bw+dx, yy+dy); ctx.stroke();
+      }
+      // Glas-Glanz (diagonal)
+      const sh = ctx.createLinearGradient(x, y, x + bw, y + bh);
+      sh.addColorStop(0, 'rgba(255,255,255,0.12)'); sh.addColorStop(0.4, 'rgba(255,255,255,0.03)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sh; ctx.fillRect(x, y, bw, bh);
+      // Konturen
+      ctx.strokeStyle = 'rgba(148,163,184,0.45)'; ctx.lineWidth = 1;
+      ctx.strokeRect(x, y, bw, bh);
+      ctx.beginPath(); ctx.moveTo(x+bw, y); ctx.lineTo(x+bw+dx, y+dy); ctx.lineTo(x+bw+dx, y+dy+bh); ctx.closePath(); ctx.stroke();
+    }
+
+    // TEMP: Thermometer — Glasrohr + Kugel, Füllung, Skala alle 20°
+    function drawThermo(id, tempC, col) {
+      const ctx = iconCtx(id); if (!ctx) return;
+      const cx = 26, tw = 11, tubeTop = 6, bulbR = 10, bulbY = 64;
+      const tubeBot = bulbY - 8;
+      const colv = tempC >= 85 ? '#f87171' : col;
+      const p = Math.max(0, Math.min(1, tempC / 100));
+      // Glas (Rohr + Kugel)
+      ctx.fillStyle = 'rgba(148,163,184,0.16)';
+      rr(ctx, cx - tw/2, tubeTop, tw, tubeBot - tubeTop, 5); ctx.fill();
+      ctx.beginPath(); ctx.arc(cx, bulbY, bulbR, 0, 7); ctx.fill();
+      // Füllung
+      if (p > 0) {
+        const yTop = Math.max(tubeTop + 4, tubeBot - (tubeBot - tubeTop) * p);
+        ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 9; ctx.fillStyle = colv;
+        ctx.fillRect(cx - tw/2 + 2.5, yTop, tw - 5, bulbY - yTop);
+        ctx.beginPath(); ctx.arc(cx, bulbY, bulbR - 2.5, 0, 7); ctx.fill();
+        ctx.restore();
+      }
+      // Glas-Glanz
+      const sh = ctx.createLinearGradient(cx - tw/2, tubeTop, cx + tw/2, tubeBot);
+      sh.addColorStop(0, 'rgba(255,255,255,0.2)'); sh.addColorStop(0.5, 'rgba(255,255,255,0.04)'); sh.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = sh;
+      rr(ctx, cx - tw/2 + 1, tubeTop + 1, tw/2, tubeBot - tubeTop - 2, 4); ctx.fill();
+      // Skala alle 20°
+      for (let t = 20; t <= 100; t += 20) {
+        const yy = tubeBot - (tubeBot - tubeTop) * t / 100;
+        ctx.strokeStyle = 'rgba(226,232,240,0.45)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.moveTo(cx + tw/2 + 1, yy); ctx.lineTo(cx + tw/2 + 5, yy); ctx.stroke();
+        ctx.font = '7px monospace'; ctx.fillStyle = 'rgba(148,163,184,0.7)'; ctx.textAlign = 'left';
+        ctx.fillText(String(t), cx + tw/2 + 7, yy + 2);
+      }
+    }
+
+    // POWER: Energiezelle — Gehäuse, 8 Segmente (füllen sich), Blitz
+    function drawPower(id, watts, limitW, col) {
+      const ctx = iconCtx(id); if (!ctx) return;
+      const bw = 24, bh = 56;
+      const x = 17, y = 9;
+      const p = limitW > 0 ? Math.max(0, Math.min(1, watts / limitW)) : 0;
+      const colv = p > 0.92 ? '#f87171' : col;
+      // Kontakt oben
+      ctx.fillStyle = 'rgba(148,163,184,0.55)';
+      ctx.fillRect(x + bw/2 - 5, y - 4, 10, 4);
+      // Gehäuse
+      ctx.strokeStyle = 'rgba(148,163,184,0.5)'; ctx.lineWidth = 1.5;
+      rr(ctx, x, y, bw, bh, 4); ctx.stroke();
+      // Segmente (unten → oben)
+      const N = 8, segH = 5.5;
+      for (let i = 0; i < N; i++) {
+        const yy = y + bh - 3 - (i + 1) * segH;
+        if (i < Math.round(p * N)) {
+          ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 7; ctx.fillStyle = colv;
+          rr(ctx, x + 3, yy, bw - 6, segH - 1.2, 1.5); ctx.fill();
+          ctx.restore();
+        } else {
+          ctx.fillStyle = 'rgba(148,163,184,0.16)';
+          rr(ctx, x + 3, yy, bw - 6, segH - 1.2, 1.5); ctx.fill();
+        }
+      }
+      // Blitz
+      const bx = 32, by = y + bh/2;
+      ctx.save(); ctx.shadowColor = colv; ctx.shadowBlur = 9;
+      ctx.fillStyle = 'rgba(248,253,255,0.95)';
+      ctx.beginPath();
+      ctx.moveTo(bx + 3, by - 10); ctx.lineTo(bx - 5, by + 2); ctx.lineTo(bx - 0.5, by + 2);
+      ctx.lineTo(bx - 3, by + 10); ctx.lineTo(bx + 5, by - 2); ctx.lineTo(bx + 0.5, by - 2);
+      ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+
+    // Wert groß neben dem Icon (HTML): warn = rot
+    function setVal(slot, key, text, warn) {
+      const el = $(slot + '-v-' + key);
+      if (!el) return;
+      el.innerText = text;
+      el.style.color = warn ? '#f87171' : '';
     }
 
     function setGpuCard(slot, g) {
       // slot: 'gpu0' | 'gpu1', g: {load, vram_used_mib, vram_total_mib, temp_c, power_w}
       const col = slot === 'gpu0' ? '#22d3ee' : '#34d399';   // cyan / emerald
-      const load = Math.round(g.load || 0);
-      drawGpuDonut(slot + '-d-load', slot + '-d-load-cap', (g.load || 0) / 100, String(load), 'of 100%', col);
-      const vramT = g.vram_total_mib || 0;
-      if (vramT) {
-        drawGpuDonut(slot + '-d-vram', slot + '-d-vram-cap', (g.vram_used_mib || 0) / vramT,
-          ((g.vram_used_mib || 0) / 1024).toFixed(1), 'of ' + (vramT / 1024).toFixed(1) + ' GB', col);
+      const mobile = window.matchMedia('(max-width: 1023px)').matches;
+      const load = g.load || 0;
+      drawTacho(slot + '-i-load', load, col);
+      setVal(slot, 'load', Math.round(load) + '%', load > 92);
+      if (g.vram_total_mib) {
+        const uGb = (g.vram_used_mib || 0) / 1024, tGb = g.vram_total_mib / 1024;
+        drawVramBox(slot + '-i-vram', uGb, tGb, col);
+        setVal(slot, 'vram', mobile ? uGb.toFixed(1) : uGb.toFixed(1) + ' GB', tGb > 0 && uGb / tGb > 0.92);
+        const cv = $(slot + '-c-vram'); if (cv) cv.innerText = mobile ? 'GB / ' + tGb.toFixed(1) : 'of ' + tGb.toFixed(1) + ' GB';
       }
-      if (g.temp_c != null) drawGpuDonut(slot + '-d-temp', slot + '-d-temp-cap', g.temp_c / 100, String(Math.round(g.temp_c)), 'max 100\u00B0C', col);
+      if (g.temp_c != null) {
+        drawThermo(slot + '-i-temp', g.temp_c, col);
+        setVal(slot, 'temp', Math.round(g.temp_c) + '\u00B0C', g.temp_c >= 85);
+      }
       const pl = powerLimitW || 180;
-      drawGpuDonut(slot + '-d-power', slot + '-d-power-cap', (g.power_w || 0) / pl, String(Math.round(g.power_w || 0)), 'of ' + Math.round(pl) + ' W', col);
+      drawPower(slot + '-i-power', g.power_w || 0, pl, col);
+      setVal(slot, 'power', mobile ? Math.round(g.power_w || 0) + 'W' : Math.round(g.power_w || 0) + ' W', (g.power_w || 0) > pl * 0.92);
+      const cp = $(slot + '-c-power'); if (cp) cp.innerText = 'of ' + Math.round(pl) + ' W';
     }
 
     function setCore(source, model) {
