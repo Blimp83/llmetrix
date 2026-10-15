@@ -19,6 +19,7 @@ from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 PROM_URL = os.environ.get("LMPROM_URL", "http://192.168.178.22:9090")
+DCGM_URL = os.environ.get("LM_DCGM_URL", "http://192.168.178.40:9400")   # direkter Exporter-Scrape (~17 ms) statt Prometheus (5–15 s Latenz)
 OLLAMA_EP = {
     "gpu0": os.environ.get("LM_OLLAMA_GPU0", "https://rtx-gpu0.obsy.icu"),
     "gpu1": os.environ.get("LM_OLLAMA_GPU1", "https://rtx-gpu1.obsy.icu"),
@@ -181,6 +182,49 @@ def get_ollama():
 # aktualisiert ein Daemon-Thread alle 3 s im Hintergrund; der Endpoint liefert den letzten guten Stand.
 _oll_cache = {"ts": 0, "data": None}
 
+# ── DCGM-Live-Cache: direkter Scrape des Exporters alle 1 s → GPU-Last kommt ~live ins Dashboard ──
+_dcg_cache = {"ts": 0, "gpus": None}
+_DCGM_RE = re.compile(r'^(DCGM_FI_DEV_(?:GPU_UTIL|FB_USED|FB_FREE|GPU_TEMP|POWER_USAGE))\{gpu="(\d+)"[^}]*\}\s+([\d.]+)\s*$')
+
+
+def _dcgm_scrape():
+    """DCGM-Exporter direkt scrapen (Prometheus-Textformat). Liefert {gpu: {load, vram_used_mib, ...}}."""
+    req = urllib.request.Request(f"{DCGM_URL}/metrics", headers={"User-Agent": "llmetrix"})
+    with urllib.request.urlopen(req, timeout=3) as r:
+        text = r.read().decode("utf-8", "replace")
+    gpus = {}
+    for line in text.splitlines():
+        m = _DCGM_RE.match(line)
+        if not m:
+            continue
+        name, gpu, val = m.group(1), int(m.group(2)), float(m.group(3))
+        key = {"GPU_UTIL": "load", "FB_USED": "vram_used_mib",
+               "FB_FREE": "vram_free_mib", "GPU_TEMP": "temp_c",
+               "POWER_USAGE": "power_w"}[name.split("_DEV_")[1]]
+        gpus.setdefault(gpu, {})[key] = val
+    if not gpus:
+        raise ValueError("keine DCGM-Werte")
+    for g in gpus.values():
+        if "vram_used_mib" in g and "vram_free_mib" in g:
+            g["vram_total_mib"] = round(g.pop("vram_free_mib") + g["vram_used_mib"])
+    return gpus
+
+
+def _dcgm_refresher():
+    while True:
+        try:
+            _dcg_cache["gpus"] = _dcgm_scrape()
+            _dcg_cache["ts"] = time.time()
+        except Exception:
+            pass   # letzter guter Stand bleibt (bis 10 s alt → Fallback auf Prometheus)
+        time.sleep(1.0)
+
+
+def get_gpus_live():
+    """GPU-Daten: frisch aus dem DCGM-Cache (≤10 s alt), sonst Fallback auf Prometheus."""
+    if _dcg_cache["gpus"] and time.time() - _dcg_cache["ts"] < 10:
+        return {str(k): v for k, v in _dcg_cache["gpus"].items()}
+
 
 def _ollama_refresher():
     while True:
@@ -205,9 +249,9 @@ def get_ollama_cached():
 
 
 def build_metrics():
-    # GPUs (Prometheus, ~5 ms) synchron; Ollama aus dem Background-Cache → /api/metrics bleibt unter ~1 s,
-    # auch wenn die Ollama-Server gerade 5–12 s für einen Call brauchen.
-    gpus = get_gpus()
+    # GPUs: frisch aus dem DCGM-Live-Cache (1 s-Scrape, ~17 ms) → Last kommt ~live rein;
+    # Fallback auf Prometheus (5–15 s Latenz), falls der Exporter kurz nicht erreichbar ist.
+    gpus = get_gpus_live() or get_gpus()
     ollama = get_ollama_cached()
     ai_online = any(g.get("load") is not None for g in gpus.values()) if isinstance(gpus, dict) and "error" not in gpus else False
     return {
@@ -550,4 +594,5 @@ if __name__ == "__main__":
     port = int(os.environ.get("LM_PORT", "8790"))
     print(f"[llmetrix] starting on :{port} (prometheus={PROM_URL})", flush=True)
     threading.Thread(target=_ollama_refresher, daemon=True).start()
+    threading.Thread(target=_dcgm_refresher, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
