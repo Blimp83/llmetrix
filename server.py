@@ -109,6 +109,8 @@ def get_gpus():
 _ps_cache = {}
 _ps_cache_lock = threading.Lock()
 PS_CACHE_TTL = 60.0
+_online_cache = {}   # letzter guter /api/version-Check pro Endpoint (unter Last teils Timeout → "online" flackert)
+ONLINE_TTL = 60.0
 
 
 def _ps_models_fresh(base, gpu):
@@ -143,8 +145,11 @@ def _ollama_one(key, base):
         with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
             info["version"] = json.load(r).get("version")
             info["online"] = True
+        _online_cache[key] = time.time()
     except Exception:
-        pass
+        # unter Inferenz-Lust teils Timeout → letzter guter Stand vorgehalten (bis 60 s), damit "Modell: none" nicht flackert
+        if time.time() - _online_cache.get(key, 0) < ONLINE_TTL:
+            info["online"] = True
     models_raw, sysinfo, stale = _ps_models_fresh(base, key)
     info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
     models = []
@@ -332,9 +337,13 @@ def get_model_info(gpu):
         with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
             json.load(r)
         out["online"] = True
+        _online_cache[gpu] = time.time()
     except Exception as e:
-        out["error"] = str(e)
-        return out
+        if time.time() - _online_cache.get(gpu, 0) < ONLINE_TTL:
+            out["online"] = True   # letzter guter Stand (unter Last teils Timeout)
+        else:
+            out["error"] = str(e)
+            return out
     models_raw, _sysinfo, _stale = _ps_models_fresh(base, gpu)
     for m in models_raw:  # letztes Array-Element = zuletzt geladen
         name = m.get("name")
