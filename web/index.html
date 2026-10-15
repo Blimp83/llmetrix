@@ -133,6 +133,14 @@
         <div class="text-right shrink-0">
           <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
           <div class="text-2xl font-black text-teal-300 glow-core" id="core-vram">-- GB</div>
+          <!-- GPU-Offload: Donut (Ring = Anteil im VRAM, Rest = CPU-Spill-over) -->
+          <div class="flex items-center gap-2 mt-2 justify-end" id="offload-wrap">
+            <div class="text-right">
+              <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
+              <div id="offload-cap" class="text-[10px] text-slate-500">--</div>
+            </div>
+            <svg id="offload-donut" width="46" height="46" viewBox="0 0 46 46"></svg>
+          </div>
         </div>
       </div>
 
@@ -565,6 +573,7 @@
         $('core-model').innerText = 'KEIN MODELL GELADEN';
         ['core-params','core-quant','core-ctx'].forEach(id => $(id).innerText = '--');
         $('core-vram').innerText = '-- GB';
+        drawOffload(null);
         return;
       }
       $('core-model').innerText = model.name;
@@ -572,6 +581,33 @@
       $('core-quant').innerText = model.quant || '--';
       $('core-ctx').innerText = model.ctx ? model.ctx.toLocaleString('de-DE') : '--';
       $('core-vram').innerText = (model.vram_gb || 0).toFixed(1) + ' GB';
+      drawOffload(model.offload_pct, model.vram_gb);
+    }
+
+    // ── GPU-Offload-Donut: Ring = Anteil im VRAM (teal), Rest = CPU-Spill-over (schwach) ──
+    let lastOffloadPct = null;
+    function drawOffload(pct, vramGb) {
+      const svg = $('offload-donut'), cap = $('offload-cap');
+      if (pct == null) { svg.innerHTML = ''; cap.innerText = '--'; lastOffloadPct = null; return; }
+      const p = Math.max(0, Math.min(100, pct)) / 100;
+      lastOffloadPct = p;
+      const r = 18, C = 2 * Math.PI * r;
+      // 100% = helles teal (voll GPU), <100% = Standard-teal, der graue Rest-Ring zeigt den CPU-Anteil
+      const full = p >= 0.995;
+      const gpuCol = full ? '#5eead4' : '#2dd4bf';
+      svg.innerHTML =
+        '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="rgba(148,163,184,0.18)" stroke-width="5"/>' +
+        '<circle cx="23" cy="23" r="' + r + '" fill="none" stroke="' + gpuCol + '" stroke-width="5" ' +
+        'stroke-dasharray="' + (C * p).toFixed(2) + ' ' + C.toFixed(2) + '" stroke-linecap="round" transform="rotate(-90 23 23)"/>' +
+        '<text x="23" y="26" text-anchor="middle" font-size="10" font-weight="bold" fill="' + (full ? '#ccfbf1' : '#e2e8f0') + '">' + Math.round(p * 100) + '%</text>';
+      cap.innerText = full ? 'VOLLSTÄNDIG GPU' : (Math.round((1 - p) * 100) + '% CPU-Spillover');
+    }
+    // Layer-Zahl ergänzen, sobald das MODEL SPEC da ist (z. B. 65/65 LAYERS)
+    function updateOffloadLayers(blocks) {
+      if (!blocks || lastOffloadPct == null) return;
+      const p = lastOffloadPct;
+      const onGpu = Math.max(0, Math.min(blocks, Math.round(blocks * p)));
+      $('offload-cap').innerText = onGpu + '/' + blocks + ' LAYERS' + (onGpu >= blocks ? ' · VOLL GPU' : (' · ' + (blocks - onGpu) + ' CPU'));
     }
 
     // ── 4b. MODEL SPEC (ollama show des aktiven Containers) + GPU-Chips ───
@@ -609,6 +645,8 @@
       if (s.ssm_state) build.push('Mamba d' + s.ssm_state);
       if (s.full_attn_every && Number(s.full_attn_every) > 1) build.push('full-attn 1/' + s.full_attn_every);
       $('spec-build').innerText = build.join(' · ') || '--';
+      // Offload-Layer-Zahl: Haupt-Blöcke + MTP-Draft-Layer (beide werden offloaded, z. B. 65+1=66)
+      updateOffloadLayers(s.blocks ? s.blocks + (Number(s.mtp_layers) || 0) : null);
       const extra = [];
       if (m.capabilities && m.capabilities.length) extra.push(m.capabilities.join('+'));
       if (s.mtp_layers) extra.push('MTP-Draft ' + s.mtp_layers + 'L');

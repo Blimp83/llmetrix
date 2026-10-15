@@ -162,6 +162,8 @@ def _ollama_one(key, base):
             "quant": d.get("quantization_level"),
             "ctx": m.get("context_length"),
             "vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
+            # Offload-Rate: Anteil des Modells im VRAM (1.0 = voller GPU-Offload, kleiner = CPU-Spill-over)
+            "offload_pct": round(100 * m.get("size_vram", 0) / m["size"], 1) if m.get("size") else None,
         })
     if models:
         info["models"] = models
@@ -396,6 +398,8 @@ def get_model_info(gpu):
             "effective_ctx": m.get("context_length"),
             "size_vram_gb": round(m.get("size_vram", 0) / 1e9, 1),
             "processor": m.get("processor"),
+            # Offload-Rate: Anteil im VRAM (100 = voller GPU-Offload, kleiner = CPU-Spill-over)
+            "offload_pct": round(100 * m.get("size_vram", 0) / m["size"], 1) if m.get("size") else None,
         }
         try:
             sh = ollama_show(base, name)
