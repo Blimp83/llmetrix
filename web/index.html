@@ -78,7 +78,7 @@
           <span class="text-emerald-300" id="brain-g1">GPU1: --</span>
         </span>
       </div>
-      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60 h-40 lg:h-[210px]"></canvas>
+      <canvas id="brain-canvas" class="w-full block rounded bg-slate-950/60 h-48 lg:h-[270px]"></canvas>
     </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
@@ -431,7 +431,7 @@
       if (B.rain) { const off = (t * 14) % h; c.drawImage(B.rain, 0, off - h, w, h * 2); c.drawImage(B.rain, 0, off, w, h * 2); }
 
       const cx = w / 2, cy = h / 2;
-      const R = Math.min(h * 0.46, w * 0.17);
+      const R = Math.min(h * 0.40, w * 0.16);
       orbAngle += dt * (0.3 + 1.1 * (smL + smR));   // dreht sich beständig, schneller unter Last
 
       // ── Projektion: Rotation um Y + fester Tilt um X; Farbe nach Bildposition (links cyan → rechts emerald) ──
