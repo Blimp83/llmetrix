@@ -34,7 +34,7 @@
     .glow-core { text-shadow: 0 0 12px #2dd4bf; }
     .glow-cyan { text-shadow: 0 0 12px #00f0ff; }
     .glow-emerald { text-shadow: 0 0 12px #10b981; }
-    .glow-amber { text-shadow: 0 0 12px #f59e0b; }
+    .glow-teal { text-shadow: 0 0 12px #2dd4bf; }
     .bar-track { background: rgba(2, 6, 23, 0.9); border: 1px solid rgba(148,163,184,0.2); }
     @keyframes pulse-slow { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
     .pulse-slow { animation: pulse-slow 2s ease-in-out infinite; }
@@ -61,7 +61,7 @@
       <span class="text-xs text-slate-400 hidden sm:inline">BENCHMARK:</span>
       <button id="bench-gpu0" onclick="runBenchmark('gpu0')" class="px-2.5 py-1 bg-cyan-950 text-xs text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900 disabled:opacity-40">GPU 0</button>
       <button id="bench-gpu1" onclick="runBenchmark('gpu1')" class="px-2.5 py-1 bg-emerald-950 text-xs text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900 disabled:opacity-40">GPU 1</button>
-      <button id="bench-dual" onclick="runBenchmark('dual')" class="px-2.5 py-1 bg-amber-950 text-xs text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900 disabled:opacity-40">DUAL</button>
+      <button id="bench-dual" onclick="runBenchmark('dual')" class="px-2.5 py-1 bg-teal-950 text-xs text-teal-300 border border-teal-500/50 rounded hover:bg-teal-900 disabled:opacity-40">DUAL</button>
     </div>
   </header>
 
@@ -206,7 +206,7 @@
         <span class="text-[10px] text-slate-400 tracking-widest">OLLAMA LIVE-LOG</span>
         <button onclick="switchLogTab('gpu0')" id="logtab-gpu0" class="px-2 py-0.5 text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900">GPU 0</button>
         <button onclick="switchLogTab('gpu1')" id="logtab-gpu1" class="px-2 py-0.5 text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900">GPU 1</button>
-        <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-amber-950 text-amber-300 border border-amber-500/50 rounded hover:bg-amber-900">DUAL</button>
+        <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-teal-950 text-teal-300 border border-teal-500/50 rounded hover:bg-teal-900">DUAL</button>
         <span id="log-model" class="text-[10px] text-slate-500 ml-2 break-all"></span>
       </div>
       <div class="flex items-center gap-3 shrink-0">
@@ -513,7 +513,7 @@
       $('brain-g0').innerText = 'GPU0: ' + (g0 ? Math.round(g0.load) + '%' : '--') + (brainData.tps0 ? ' · ' + Math.round(brainData.tps0) + ' tk/s' : '');
       $('brain-g1').innerText = 'GPU1: ' + (g1 ? Math.round(g1.load) + '%' : '--') + (brainData.tps1 ? ' · ' + Math.round(brainData.tps1) + ' tk/s' : '');
       const bd = $('brain-dual');
-      if (brainData.dual) { bd.innerText = 'DUAL: TENSOR-SPLIT AKTIV'; bd.className = 'text-amber-300 px-2 py-0.5 rounded border border-amber-500/60 bg-amber-950 animate-pulse'; }
+      if (brainData.dual) { bd.innerText = 'DUAL: TENSOR-SPLIT AKTIV'; bd.className = 'text-teal-300 px-2 py-0.5 rounded border border-teal-500/60 bg-teal-950 animate-pulse'; }
       else { bd.innerText = 'DUAL: IDLE'; bd.className = 'text-slate-500 px-2 py-0.5 rounded border border-slate-700 bg-slate-900'; }
     }
 
@@ -599,11 +599,11 @@
       c.strokeStyle = 'rgba(226,240,253,0.85)'; c.lineWidth = 1.6;
       c.beginPath(); c.moveTo(cxm, B.cxTop + 5); c.lineTo(cxm, B.cxBot - 5); c.stroke();
       if (brainData.dual) {
-        // DUAL: amber Glow + Energie-Pulse
+        // DUAL: teal Glow + Energie-Pulse (Cyan→Emerald über die Mittellinie)
         const g = c.createLinearGradient(cxm - 13, 0, cxm + 13, 0);
-        g.addColorStop(0, 'rgba(245,158,11,0)');
-        g.addColorStop(0.5, 'rgba(255,237,180,' + (0.30 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
-        g.addColorStop(1, 'rgba(245,158,11,0)');
+        g.addColorStop(0, 'rgba(0,240,255,0)');
+        g.addColorStop(0.5, 'rgba(204,251,241,' + (0.30 + 0.10 * Math.sin(t * 3)).toFixed(3) + ')');
+        g.addColorStop(1, 'rgba(16,185,129,0)');
         c.fillStyle = g; c.fillRect(cxm - 13, B.cxTop, 26, B.cxBot - B.cxTop);
         for (let i = 0; i < 7; i++) {
           const y = B.cxTop + ((t * (24 + i * 7) + i * 37) % (B.cxBot - B.cxTop));
@@ -847,7 +847,7 @@
 
     // ── 6. Ollama Live-Log (Loki) ────────────────────────────────────────
     let logTab = 'dual';
-    const logColors = { gpu0: 'text-cyan-300', gpu1: 'text-emerald-300', dual: 'text-amber-300' };
+    const logColors = { gpu0: 'text-cyan-300', gpu1: 'text-emerald-300', dual: 'text-teal-300' };
 
     function activeModelOf(entries) {
       // neueste "load_model"-Zeile → Modellname
@@ -884,7 +884,7 @@
         const t = new Date(e.ts * 1000).toLocaleTimeString('de-DE', { hour12: false });
         let cls = logColors[gpu] || 'text-slate-300';
         if (/print_timing|t\/s/.test(e.line)) cls = 'text-emerald-400';
-        else if (/\| 200 \|/.test(e.line) && /generate/.test(e.line)) cls = 'text-amber-300';
+        else if (/\| 200 \|/.test(e.line) && /generate/.test(e.line)) cls = 'text-teal-300';
         return `<div class="${cls}"><span class="text-slate-600">${t}</span> ${escapeHtml(e.line)}</div>`;
       }).join('');
       view.scrollTop = view.scrollHeight;                           // auto-scroll nach unten
@@ -898,7 +898,7 @@
       const base = 'px-2 py-0.5 text-[10px] border rounded ';
       $('logtab-gpu0').className = base + (logTab === 'gpu0' ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400' : 'bg-cyan-950 text-cyan-300 border-cyan-500/50 hover:bg-cyan-900');
       $('logtab-gpu1').className = base + (logTab === 'gpu1' ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400' : 'bg-emerald-950 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900');
-      $('logtab-dual').className = base + (logTab === 'dual' ? 'bg-amber-500/30 text-amber-200 border-amber-400' : 'bg-amber-950 text-amber-300 border-amber-500/50 hover:bg-amber-900');
+      $('logtab-dual').className = base + (logTab === 'dual' ? 'bg-teal-500/30 text-teal-200 border-teal-400' : 'bg-teal-950 text-teal-300 border-teal-500/50 hover:bg-teal-900');
     }
 
     function switchLogTab(gpu) {
@@ -923,7 +923,7 @@
     async function runBenchmark(target) {
       const btns = ['bench-gpu0', 'bench-gpu1', 'bench-dual'];
       btns.forEach(id => $(id).disabled = true);
-      log(`[BENCHMARK]: Echte Inferenz auf ${target.toUpperCase()} gestartet — messe Prompt-Eval + Generation...`, 'text-amber-400');
+      log(`[BENCHMARK]: Echte Inferenz auf ${target.toUpperCase()} gestartet — messe Prompt-Eval + Generation...`, 'text-teal-400');
       try {
         const r = await fetch('/api/inference', {
           method: 'POST',
