@@ -328,14 +328,14 @@
     });
 
     // ── 1. NEURAL ORB (2D) — GPU0 (links, cyan) · DUAL (Kern) · GPU1 (rechts, emerald) ──
-    // Dichte Partikelwolke (Oberfläche + Volumen), beständige Rotation. Treffer schießen als Nadeln vom Punkt
-    // heraus und ziehen sich wieder ein (Animation ∝ GPU-Aktivität). Token-Streams fließen von den Kanten in den Kern.
+    // Unsichtbare rotierende Sphäre: Nadeln feuern von den Ankerpunkten heraus → halten → ziehen sich ein.
+    // Trigger-Rate + Länge ∝ GPU-Aktivität. Token-Streams fließen von den Kanten in den Kern (∝ t/s).
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für ORB-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
-    const B = { w: 0, h: 0, dpr: 1, pts: [], streams: null, rings: null, rain: null };
+    const B = { w: 0, h: 0, dpr: 1, pts: [], streams: null, rain: null };
     const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
     const clamp01 = v => Math.max(0, Math.min(1, v));
 
@@ -347,26 +347,17 @@
       B.dpr = dpr;
       const w = B.w, h = B.h;
 
-      // ── Partikelwolke: Fibonacci-Schale (55%) + innere Volumenpunkte (45%) für die "fluffy"-Tiefe ──
-      const N = 1500, GA = Math.PI * (3 - Math.sqrt(5));
+      // ── Ankerpunkte: Fibonacci-Sphäre (unsichtbar) — jeder Punkt trägt eine Nadel ──
+      const N = 1600, GA = Math.PI * (3 - Math.sqrt(5));
       B.pts = [];
       for (let i = 0; i < N; i++) {
-        let x, y, z, vol;
-        if (i < N * 0.55) {   // Oberfläche
-          const yy = 1 - (i / (N * 0.55 - 1)) * 2;
-          const r = Math.sqrt(Math.max(0, 1 - yy * yy));
-          x = Math.cos(GA * i) * r; y = yy; z = Math.sin(GA * i) * r; vol = false;
-        } else {               // Volumen (gleichmäßig im Ball)
-          const u = Math.random(), v = Math.random();
-          const th = 2 * Math.PI * u, ph = Math.acos(2 * v - 1);
-          const rr = 0.3 + 0.68 * Math.cbrt(Math.random());
-          x = rr * Math.sin(ph) * Math.cos(th); y = rr * Math.cos(ph); z = rr * Math.sin(ph) * Math.sin(th); vol = true;
-        }
+        const y = 1 - (i / (N - 1)) * 2;
+        const r = Math.sqrt(Math.max(0, 1 - y * y));
         B.pts.push({
-          x, y, z, vol,
+          x: Math.cos(GA * i) * r, y, z: Math.sin(GA * i) * r,
           ph: Math.random() * 6.28, sp: 0.4 + Math.random() * 1.4,
-          nlen: 7 + Math.random() * 21,          // max. Nadel-Länge (px) — organische Variation
-          st: 'idle', ext: 0, stime: 0, hd: 0,   // Nadel-Zustand: idle → out → hold → in
+          nlen: 10 + Math.random() * 26,           // max. Nadel-Länge (px) — organische Variation
+          st: 'idle', ext: 0, stime: 0, hd: 0,     // Nadel-Zustand: idle → out → hold → in
         });
       }
 
@@ -379,7 +370,6 @@
         return arr;
       }
       B.streams = { L: mkStream(), R: mkStream() };
-      B.rings = { L: [], R: [] };   // Absorptions-Pulse im Kern
 
       // ── Binär-Regen-Hintergrund (statische Textur, scrollt langsam) ──
       const rain = document.createElement('canvas');
@@ -443,25 +433,24 @@
       // ── Projektion: Rotation um Y + fester Tilt um X; Farbe nach Bildposition (links cyan → rechts emerald) ──
       const cA = Math.cos(orbAngle), sA = Math.sin(orbAngle);
       const tilt = 0.45, cT = Math.cos(tilt), sT = Math.sin(tilt);
-      const back = [], front = [];
+      const proj = [];
       for (const p of B.pts) {
         const x1 = p.x * cA + p.z * sA, z1 = -p.x * sA + p.z * cA;
         const y2 = p.y * cT - z1 * sT, z2 = p.y * sT + z1 * cT;
         const px = cx + x1 * R, py = cy + y2 * R;
         const mix = clamp01((px - (cx - R)) / (2 * R));
-        (z2 < 0 ? back : front).push({ p, px, py, mix });
+        proj.push({ p, px, py, mix, back: z2 < 0 });
       }
 
       // ── Nadel-Animation: Treffer feuern heraus (out) → halten (hold) → ziehen sich ein (in) ──
-      //    Trigger-Rate ∝ lokaler Aktivität; nur Oberflächenpunkte tragen Nadeln
-      for (const p of B.pts) {
-        if (p.vol) continue;
+      for (const q of proj) {
+        const p = q.p;
         if (p.st === 'idle') {
           const act = clamp01(smL + (smR - smL) * ((p.x * cA + p.z * sA) * 0.5 + 0.5));
-          if (act > 0.1 && Math.random() < dt * (2.5 * act)) { p.st = 'out'; p.stime = 0; }
+          if (act > 0.1 && Math.random() < dt * (3.2 * act)) { p.st = 'out'; p.stime = 0; }
         } else if (p.st === 'out') {
           p.stime += dt;
-          if (p.stime >= 0.30) { p.st = 'hold'; p.stime = 0; p.hd = 0.06 + Math.random() * 0.22; }
+          if (p.stime >= 0.28) { p.st = 'hold'; p.stime = 0; p.hd = 0.05 + Math.random() * 0.24; }
         } else if (p.st === 'hold') {
           p.stime += dt;
           if (p.stime >= p.hd) { p.st = 'in'; p.stime = 0; }
@@ -471,18 +460,7 @@
         }
       }
 
-      // ── Rückseite: dunkle Wolke (Tiefe) ──
-      for (const q of back) {
-        const p = q.p;
-        const act = clamp01(smL + (smR - smL) * q.mix);
-        const tw = 0.5 + 0.5 * Math.sin(t * p.sp + p.ph);
-        const b = (p.vol ? 0.04 : 0.06) + (p.vol ? 0.10 : 0.16) * act * tw;
-        c.fillStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + b.toFixed(3) + ')';
-        const s = p.vol ? 1.2 : 1.6;
-        c.fillRect(q.px - s / 2, q.py - s / 2, s, s);
-      }
-
-      // ── Token-Streams: Kante → Kern (nur bei Aktivität auf der Seite), Absorption löst Pulse aus ──
+      // ── Token-Streams: Kante → Kern (nur bei Aktivität auf der Seite) ──
       function drawStreams(side, act, key) {
         if (act < 0.12) return;
         const rgb = side < 0 ? '0,240,255' : '16,185,129';
@@ -491,8 +469,7 @@
           const ey = s.y;
           const mx = (ex + cx) / 2, my = (ey + cy) / 2 + (ey > cy ? 14 : -14);
           s.p += dt * s.sp * (0.5 + 3.2 * act);
-          if (s.p >= 1) {   // im Kern absorbiert → Puls-Ring, neu starten
-            B.rings[key].push(t); if (B.rings[key].length > 14) B.rings[key].shift();
+          if (s.p >= 1) {   // im Kern absorbiert → neu starten
             s.p = 0; s.y = cy + (Math.random() - 0.5) * h * 1.15; s.sp = 0.3 + Math.random() * 0.55;
           }
           const u = s.p, v = 1 - u;
@@ -510,68 +487,38 @@
       drawStreams(-1, aL, 'L');
       drawStreams(1, aR, 'R');
 
-      // ── Absorptions-Ringe: Kern pulsiert, wenn Tokens ankommen ──
-      function drawRings(key, act, rgb) {
-        const rs = B.rings[key];
-        for (let i = rs.length - 1; i >= 0; i--) {
-          const age = t - rs[i];
-          if (age > 0.9) { rs.splice(i, 1); continue; }
-          const k = age / 0.9;
-          c.strokeStyle = 'rgba(' + rgb + ',' + (0.30 * (1 - k) * act).toFixed(3) + ')';
-          c.lineWidth = 1.5;
-          c.beginPath(); c.arc(cx, cy, R * (1.02 + 0.4 * k), 0, 6.29); c.stroke();
-        }
-      }
-      drawRings('L', aL, '0,240,255');
-      drawRings('R', aR, '16,185,129');
-
-      // ── Kern: pulsierendes Herz (Helligkeit ∝ Gesamtabsatz) ──
+      // ── Kern: pulsierendes Herz (Helligkeit ∝ Gesamtabsatz; DUAL → heller/teal-er) ──
       const coreAct = clamp01((smL + smR) * 0.75);
       const pulse = 0.5 + 0.5 * Math.sin(t * (1.2 + 3 * coreAct));
       const g = c.createRadialGradient(cx, cy, 1, cx, cy, R * (0.6 + 0.07 * pulse * coreAct));
-      g.addColorStop(0, 'rgba(248,253,255,' + (0.65 * (0.3 + 0.7 * coreAct)).toFixed(3) + ')');
-      g.addColorStop(0.4, 'rgba(153,246,228,' + (0.28 * (0.25 + 0.75 * coreAct)).toFixed(3) + ')');
+      g.addColorStop(0, 'rgba(248,253,255,' + ((brainData.dual ? 0.8 : 0.65) * (0.3 + 0.7 * coreAct)).toFixed(3) + ')');
+      g.addColorStop(0.4, 'rgba(' + (brainData.dual ? '94,240,214' : '153,246,228') + ',' + ((brainData.dual ? 0.34 : 0.28) * (0.25 + 0.75 * coreAct)).toFixed(3) + ')');
       g.addColorStop(1, 'rgba(94,234,212,0)');
       c.fillStyle = g; c.beginPath(); c.arc(cx, cy, R * 0.8, 0, 6.29); c.fill();
 
-      // ── Vorderseite: helle Punkte + Nadeln (herausfeuern → einziehen) ──
-      for (const q of front) {
+      // ── Nadeln: animierte Länge (out/hold/in), radial vom Punkt nach außen — die einzige sichtbare "Sphäre" ──
+      for (const q of proj) {
         const p = q.p;
+        if (p.st === 'idle') continue;
+        let e;
+        if (p.st === 'out') { const k = Math.min(1, p.stime / 0.28); e = 1 - Math.pow(1 - k, 3); }      // ease-out: schießt heraus
+        else if (p.st === 'hold') e = 1;
+        else { const k = Math.min(1, p.stime / 0.55); e = Math.pow(1 - k, 2); }                          // ease-in: zieht sich ein
+        p.ext = e;
+        if (e < 0.03) continue;
         const act = clamp01(smL + (smR - smL) * q.mix);
-        const tw = 0.5 + 0.5 * Math.sin(t * p.sp + p.ph);
-        // Nadel: animierte Länge (out/hold/in), radial vom Punkt nach außen
-        if (!p.vol && p.st !== 'idle') {
-          let e;
-          if (p.st === 'out') { const k = p.stime / 0.30; e = 1 - Math.pow(1 - Math.min(1, k), 3); }      // ease-out: schießt heraus
-          else if (p.st === 'hold') e = 1;
-          else { const k = Math.min(1, p.stime / 0.55); e = Math.pow(1 - k, 2); }                          // ease-in: zieht sich ein
-          p.ext = e;
-          if (e > 0.03) {
-            const nx = (q.px - cx) / R, ny = (q.py - cy) / R;
-            const len = p.nlen * (0.35 + 0.65 * act) * e;
-            c.strokeStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + (0.7 * act).toFixed(3) + ')';
-            c.lineWidth = 1;
-            c.beginPath(); c.moveTo(q.px, q.py); c.lineTo(q.px + nx * len, q.py + ny * len); c.stroke();
-            // Nadel-Spitze leuchtet beim Herausfeuern
-            if (e > 0.5) {
-              c.fillStyle = 'rgba(255,255,255,' + (0.8 * act * e).toFixed(3) + ')';
-              c.fillRect(q.px + nx * len - 1, q.py + ny * len - 1, 2, 2);
-            }
-          }
+        const rgb = ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0);
+        const nx = (q.px - cx) / R, ny = (q.py - cy) / R;
+        const len = p.nlen * (0.35 + 0.65 * act) * e;
+        const al = (q.back ? 0.4 : 0.75) * act;
+        c.strokeStyle = 'rgba(' + rgb + ',' + al.toFixed(3) + ')';
+        c.lineWidth = 1;
+        c.beginPath(); c.moveTo(q.px, q.py); c.lineTo(q.px + nx * len, q.py + ny * len); c.stroke();
+        // Nadel-Spitze leuchtet beim Herausfeuern
+        if (e > 0.5) {
+          c.fillStyle = 'rgba(255,255,255,' + ((q.back ? 0.4 : 0.8) * act * e).toFixed(3) + ')';
+          c.fillRect(q.px + nx * len - 1, q.py + ny * len - 1, 2, 2);
         }
-        const b = (p.vol ? 0.25 : 0.38) + 0.62 * act * tw;
-        const sz = (p.vol ? 1.2 : 1.5) + 1.4 * act * tw;
-        c.fillStyle = 'rgba(' + ((16 * q.mix) | 0) + ',' + ((240 - 55 * q.mix) | 0) + ',' + ((255 - 126 * q.mix) | 0) + ',' + b.toFixed(3) + ')';
-        c.fillRect(q.px - sz / 2, q.py - sz / 2, sz, sz);
-      }
-
-      // ── DUAL: weiches teal-Halo um den Kern (Tensor-Split aktiv) ──
-      if (brainData.dual) {
-        const dg = c.createRadialGradient(cx, cy, R * 0.2, cx, cy, R * 1.15);
-        dg.addColorStop(0, 'rgba(45,212,191,' + (0.08 + 0.03 * Math.sin(t * 3)).toFixed(3) + ')');
-        dg.addColorStop(0.6, 'rgba(45,212,191,' + (0.05 + 0.02 * Math.sin(t * 3)).toFixed(3) + ')');
-        dg.addColorStop(1, 'rgba(45,212,191,0)');
-        c.fillStyle = dg; c.beginPath(); c.arc(cx, cy, R * 1.15, 0, 6.29); c.fill();
       }
     }
 
