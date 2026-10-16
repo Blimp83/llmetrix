@@ -156,6 +156,20 @@
             </div>
             <svg id="offload-donut" width="46" height="46" viewBox="0 0 46 46"></svg>
           </div>
+          <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
+          <div class="mt-2 border-t border-teal-500/20 pt-2" id="sys-wrap">
+            <div class="text-[9px] text-slate-400 tracking-wider text-right mb-1.5">AI-SERVER SYSTEM</div>
+            <div class="flex items-center gap-2 justify-end">
+              <span class="text-[9px] text-slate-500 w-8 text-right shrink-0">CPU</span>
+              <div class="bar-track h-1.5 rounded flex-1 max-w-[120px]"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
+              <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
+            </div>
+            <div class="flex items-center gap-2 justify-end mt-1.5">
+              <span class="text-[9px] text-slate-500 w-8 text-right shrink-0">RAM</span>
+              <div class="bar-track h-1.5 rounded flex-1 max-w-[120px]"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
+              <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -811,6 +825,26 @@
       el.style.color = warn ? '#f87171' : '';
     }
 
+    function setSystem(sys) {
+      // sys: {cpu_pct, ram_total_mb, ram_used_mb} | null
+      if (!sys) return;
+      if (sys.cpu_pct != null) {
+        const el = $('sys-cpu');
+        el.innerText = Math.round(sys.cpu_pct) + '%';
+        el.style.color = sys.cpu_pct > 90 ? '#f87171' : '';
+        $('sys-cpu-bar').style.width = Math.min(100, sys.cpu_pct).toFixed(1) + '%';
+      }
+      if (sys.ram_total_mb && sys.ram_used_mb != null) {
+        const pct = Math.min(100, 100 * sys.ram_used_mb / sys.ram_total_mb);
+        const el = $('sys-ram');
+        el.innerText = Math.round(pct) + '%';
+        el.style.color = pct > 90 ? '#f87171' : '';
+        $('sys-ram-bar').style.width = pct.toFixed(1) + '%';
+        const title = (sys.ram_used_mb / 1024).toFixed(1) + ' / ' + (sys.ram_total_mb / 1024).toFixed(1) + ' GB';
+        el.title = title;
+      }
+    }
+
     function setGpuCard(slot, g) {
       // slot: 'gpu0' | 'gpu1', g: {load, vram_used_mib, vram_total_mib, temp_c, power_w}
       const col = slot === 'gpu0' ? '#22d3ee' : '#34d399';   // cyan / emerald
@@ -1039,6 +1073,7 @@
         if (m.power_limit_w) powerLimitW = m.power_limit_w;
         if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); }
         if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); }
+        if (m.system) setSystem(m.system);
         brainUpdate();
 
         // Aktives Modell: priorisiert dual (große Modelle), dann gpu0, gpu1

@@ -189,6 +189,56 @@ _oll_cache = {"ts": 0, "data": None}
 _dcg_cache = {"ts": 0, "gpus": None}
 _DCGM_RE = re.compile(r'^(DCGM_FI_DEV_(?:GPU_UTIL|FB_USED|FB_FREE|GPU_TEMP|POWER_USAGE))\{gpu="(\d+)"[^}]*\}\s+([\d.]+)\s*$')
 
+# node-exporter (AI-Server-System: CPU/RAM)
+NODE_URL = os.environ.get("LM_NODE_URL", "http://192.168.178.40:9100")
+_NODE_RE = re.compile(r'^(node_cpu_seconds_total|node_memory_MemTotal_bytes|node_memory_MemAvailable_bytes)\{?([^}]*)\}?\s+([0-9.]+(?:[eE][+-]?[0-9]+)?)\s*$')
+_sys_cache = {"ts": 0, "data": None}
+
+
+def _node_scrape():
+    """node-exporter scrapen → System-CPU (via idle-Delta) + RAM-Füllstand."""
+    req = urllib.request.Request(f"{NODE_URL}/metrics", headers={"User-Agent": "llmetrix"})
+    with urllib.request.urlopen(req, timeout=3) as r:
+        text = r.read().decode("utf-8", "replace")
+    mem_total = mem_avail = None
+    idle_sum = 0.0
+    ncpu = 0
+    for line in text.splitlines():
+        m = _NODE_RE.match(line)
+        if not m:
+            continue
+        name, labels, val = m.group(1), m.group(2), float(m.group(3))
+        if name == "node_cpu_seconds_total" and 'mode="idle"' in labels:
+            idle_sum += val
+            ncpu += 1
+        elif name == "node_memory_MemTotal_bytes":
+            mem_total = val
+        elif name == "node_memory_MemAvailable_bytes":
+            mem_avail = val
+    cpu_pct = None
+    now = time.time()
+    prev_idle, prev_ts = _sys_cache.get("idle_sum"), _sys_cache.get("ts", 0)
+    if prev_idle is not None and idle_sum > prev_idle and ncpu:
+        dt = max(1e-6, now - prev_ts)
+        idle_frac = (idle_sum - prev_idle) / (ncpu * dt)
+        cpu_pct = round(max(0.0, min(100.0, 100.0 * (1.0 - idle_frac))), 1)
+    _sys_cache["idle_sum"] = idle_sum
+    _sys_cache["ts"] = now
+    return {
+        "cpu_pct": cpu_pct,
+        "ram_total_mb": round(mem_total / 1e6) if mem_total else None,
+        "ram_used_mb": round((mem_total - mem_avail) / 1e6) if (mem_total and mem_avail is not None) else None,
+    }
+
+
+def _node_refresher():
+    while True:
+        try:
+            _sys_cache["data"] = _node_scrape()
+        except Exception:
+            pass   # letzter guter Stand bleibt
+        time.sleep(2.0)
+
 
 def _dcgm_scrape():
     """DCGM-Exporter direkt scrapen (Prometheus-Textformat). Liefert {gpu: {load, vram_used_mib, ...}}."""
@@ -263,6 +313,7 @@ def build_metrics():
         "gpus": gpus,
         "ollama": ollama,
         "power_limit_w": POWER_LIMIT_W,
+        "system": _sys_cache["data"] if _sys_cache["data"] and time.time() - _sys_cache["ts"] < 15 else None,
     }
 
 
@@ -601,4 +652,5 @@ if __name__ == "__main__":
     print(f"[llmetrix] starting on :{port} (prometheus={PROM_URL})", flush=True)
     threading.Thread(target=_ollama_refresher, daemon=True).start()
     threading.Thread(target=_dcgm_refresher, daemon=True).start()
+    threading.Thread(target=_node_refresher, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
