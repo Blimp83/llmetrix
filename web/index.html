@@ -137,39 +137,11 @@
           <span class="text-[10px] bg-teal-950 text-teal-300 px-2 py-0.5 rounded border border-teal-500/50" id="core-source">--</span>
         </span>
       </div>
-      <div class="flex items-end justify-between gap-4">
-        <div class="min-w-0">
-          <div class="text-[10px] text-slate-400">MODEL</div>
-          <div class="text-xl font-black text-cyan-100 truncate" id="core-model">KEIN MODELL GELADEN</div>
-          <div class="text-xs text-slate-400 mt-1">
-            <span id="core-params">--</span> &middot; <span id="core-quant">--</span> &middot; CTX <span id="core-ctx">--</span>
-          </div>
-        </div>
-        <div class="text-right shrink-0">
-          <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
-          <div class="text-2xl font-black text-teal-300 glow-core" id="core-vram">-- GB</div>
-          <!-- GPU-Offload: Donut (Ring = Anteil im VRAM, Rest = CPU-Spill-over) -->
-          <div class="flex items-center gap-2 mt-2 justify-end" id="offload-wrap">
-            <div class="text-right">
-              <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
-              <div id="offload-cap" class="text-[10px] text-slate-500">--</div>
-            </div>
-            <svg id="offload-donut" width="46" height="46" viewBox="0 0 46 46"></svg>
-          </div>
-          <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
-          <div class="mt-2 border-t border-teal-500/20 pt-2" id="sys-wrap">
-            <div class="text-[9px] text-slate-400 tracking-wider text-right mb-1.5">AI-SERVER SYSTEM</div>
-            <div class="flex items-center gap-2 justify-end">
-              <span class="text-[9px] text-slate-500 w-8 text-right shrink-0">CPU</span>
-              <div class="bar-track h-1.5 rounded flex-1 max-w-[120px]"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
-              <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
-            </div>
-            <div class="flex items-center gap-2 justify-end mt-1.5">
-              <span class="text-[9px] text-slate-500 w-8 text-right shrink-0">RAM</span>
-              <div class="bar-track h-1.5 rounded flex-1 max-w-[120px]"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
-              <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
-            </div>
-          </div>
+      <div class="min-w-0">
+        <div class="text-[10px] text-slate-400">MODEL</div>
+        <div class="text-xl sm:text-2xl font-black text-cyan-100 truncate" id="core-model">KEIN MODELL GELADEN</div>
+        <div class="text-xs text-slate-400 mt-1">
+          <span id="core-params">--</span> &middot; <span id="core-quant">--</span> &middot; CTX <span id="core-ctx">--</span>
         </div>
       </div>
 
@@ -185,22 +157,55 @@
         </div>
       </div>
 
+      <!-- MODEL SPEC (links) + METRIKEN: VRAM / GPU OFFLOAD / AI-SERVER SYSTEM (rechts gestapelt) -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
+        <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show) -->
+        <div id="spec-block" class="hidden bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
+          <div class="flex justify-between items-center mb-1.5 gap-2">
+            <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
+            <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
+          </div>
+          <div class="text-[10px] leading-relaxed text-slate-300 font-mono space-y-0.5">
+            <div><span class="text-slate-500">ARCH</span> <span id="spec-arch" class="text-cyan-200 font-bold">--</span> · <span id="spec-size">--</span> · Q<span id="spec-quant">--</span> · CTX <span id="spec-ctx">--</span></div>
+            <div><span class="text-slate-500">BUILD</span> <span id="spec-build">--</span></div>
+            <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
+          </div>
+        </div>
+        <div class="space-y-3">
+          <!-- VRAM FOOTPRINT + GPU OFFLOAD -->
+          <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
+            <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
+            <div class="flex items-center justify-between gap-3 mt-1">
+              <div class="text-2xl font-black text-teal-300 glow-core whitespace-nowrap" id="core-vram">-- GB</div>
+              <div class="flex items-center gap-2 shrink-0">
+                <div class="text-right">
+                  <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
+                  <div id="offload-cap" class="text-[10px] text-slate-500">--</div>
+                </div>
+                <svg id="offload-donut" width="42" height="42" viewBox="0 0 46 46"></svg>
+              </div>
+            </div>
+          </div>
+          <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
+          <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5" id="sys-wrap">
+            <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
+            <div class="flex items-center gap-2">
+              <span class="text-[9px] text-slate-500 w-8 shrink-0">CPU</span>
+              <div class="bar-track h-1.5 rounded flex-1"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
+              <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
+            </div>
+            <div class="flex items-center gap-2 mt-1.5">
+              <span class="text-[9px] text-slate-500 w-8 shrink-0">RAM</span>
+              <div class="bar-track h-1.5 rounded flex-1"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
+              <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- letzte Benchmark -->
       <div class="text-[11px] text-slate-400 border-t border-teal-500/20 pt-2">
         LAST BENCHMARK: <span id="last-bench" class="text-teal-300 font-bold">noch keine Messung</span>
-      </div>
-
-      <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show) -->
-      <div id="spec-block" class="hidden bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
-        <div class="flex justify-between items-center mb-1.5 gap-2">
-          <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
-          <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
-        </div>
-        <div class="text-[10px] leading-relaxed text-slate-300 font-mono space-y-0.5">
-          <div><span class="text-slate-500">ARCH</span> <span id="spec-arch" class="text-cyan-200 font-bold">--</span> · <span id="spec-size">--</span> · Q<span id="spec-quant">--</span> · CTX <span id="spec-ctx">--</span></div>
-          <div><span class="text-slate-500">BUILD</span> <span id="spec-build">--</span></div>
-          <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
-        </div>
       </div>
     </div>
 
