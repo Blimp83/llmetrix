@@ -17,6 +17,7 @@ services:
       - LM_OLLAMA_DUAL=https://rtx-dual.obsy.icu
       - LM_LOKI_URL=http://192.168.178.22:3100
       - LM_HIST_FILE=/data/history.json
+      - LM_SERVER_NAME=AI-Server .40
     command: ["python3", "-u", "/app/server.py"]
     networks:
       - proxy

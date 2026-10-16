@@ -21,6 +21,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 PROM_URL = os.environ.get("LMPROM_URL", "http://192.168.178.22:9090")
 DCGM_URL = os.environ.get("LM_DCGM_URL", "http://192.168.178.40:9400")   # direkter Exporter-Scrape (~17 ms) statt Prometheus (5–15 s Latenz)
 POWER_LIMIT_W = float(os.environ.get("LM_POWER_LIMIT_W", "180"))   # Max-Power der Karte (RTX 5060 Ti = 180 W) — für den Power-Donut
+SERVER_NAME = os.environ.get("LM_SERVER_NAME", "")   # optionale freundliche Server-Bezeichnung fürs Dashboard
 OLLAMA_EP = {
     "gpu0": os.environ.get("LM_OLLAMA_GPU0", "https://rtx-gpu0.obsy.icu"),
     "gpu1": os.environ.get("LM_OLLAMA_GPU1", "https://rtx-gpu1.obsy.icu"),
@@ -79,11 +80,13 @@ def prom_query(query):
 def get_gpus():
     gpus = {}
     try:
-        # Alle Metriken parallel (statt sequenziell) → /api/metrics bleibt schnell, auch unter Inferenzlast
+        # Alle Metriken parallel (statt sequenziell) → /api/metrics bleibt schnell, auch unter Inferenzlast.
+        # Instance aus DCGM_URL ableiten (universell), statt hartkodeter IP.
+        dcgm_host = urllib.parse.urlparse(DCGM_URL).netloc
         def one(metric, key):
             out = {}
             try:
-                for m in prom_query(f'{metric}{{instance="192.168.178.40:9400"}}'):
+                for m in prom_query(f'{metric}{{instance="{dcgm_host}"}}'):
                     out[m["metric"].get("gpu", "0")] = float(m["value"][1])
             except Exception:
                 pass
@@ -188,6 +191,7 @@ _oll_cache = {"ts": 0, "data": None}
 # ── DCGM-Live-Cache: direkter Scrape des Exporters alle 1 s → GPU-Last kommt ~live ins Dashboard ──
 _dcg_cache = {"ts": 0, "gpus": None}
 _DCGM_RE = re.compile(r'^(DCGM_FI_DEV_(?:GPU_UTIL|FB_USED|FB_FREE|GPU_TEMP|POWER_USAGE))\{gpu="(\d+)"[^}]*\}\s+([\d.]+)\s*$')
+_DCGM_LABEL_RE = re.compile(r'^DCGM_FI_DEV_\w+\{([^}]*)\}')
 
 # node-exporter (AI-Server-System: CPU/RAM)
 NODE_URL = os.environ.get("LM_NODE_URL", "http://192.168.178.40:9100")
@@ -242,32 +246,45 @@ def _node_refresher():
 
 
 def _dcgm_scrape():
-    """DCGM-Exporter direkt scrapen (Prometheus-Textformat). Liefert {gpu: {load, vram_used_mib, ...}}."""
+    """DCGM-Exporter direkt scrapen (Prometheus-Textformat). Liefert {gpu: {load, vram_used_mib, ...}} + gpu_name/hostname."""
     req = urllib.request.Request(f"{DCGM_URL}/metrics", headers={"User-Agent": "llmetrix"})
     with urllib.request.urlopen(req, timeout=3) as r:
         text = r.read().decode("utf-8", "replace")
     gpus = {}
+    gpu_name = hostname = None
     for line in text.splitlines():
+        if gpu_name is None and line.startswith("DCGM_FI_DEV_GPU_UTIL{"):
+            # modelName/Hostname aus den Labels der ersten Zeile (universell: keine hartkodierten Namen)
+            lm = _DCGM_LABEL_RE.match(line)
+            if lm:
+                labels = dict(re.findall(r'(\w+)="([^"]*)"', lm.group(1)))
+                gpu_name = labels.get("modelName")
+                hostname = labels.get("Hostname")
         m = _DCGM_RE.match(line)
-        if not m:
-            continue
-        name, gpu, val = m.group(1), int(m.group(2)), float(m.group(3))
-        key = {"GPU_UTIL": "load", "FB_USED": "vram_used_mib",
-               "FB_FREE": "vram_free_mib", "GPU_TEMP": "temp_c",
-               "POWER_USAGE": "power_w"}[name.split("_DEV_")[1]]
-        gpus.setdefault(gpu, {})[key] = val
+        if m:
+            name, gpu, val = m.group(1), int(m.group(2)), float(m.group(3))
+            key = {"GPU_UTIL": "load", "FB_USED": "vram_used_mib",
+                   "FB_FREE": "vram_free_mib", "GPU_TEMP": "temp_c",
+                   "POWER_USAGE": "power_w"}[name.split("_DEV_")[1]]
+            gpus.setdefault(gpu, {})[key] = val
     if not gpus:
         raise ValueError("keine DCGM-Werte")
     for g in gpus.values():
         if "vram_used_mib" in g and "vram_free_mib" in g:
             g["vram_total_mib"] = round(g.pop("vram_free_mib") + g["vram_used_mib"])
-    return gpus
+    if gpu_name:
+        for g in gpus.values():
+            g["gpu_name"] = gpu_name
+    return {"gpus": gpus, "gpu_name": gpu_name, "hostname": hostname}
 
 
 def _dcgm_refresher():
     while True:
         try:
-            _dcg_cache["gpus"] = _dcgm_scrape()
+            data = _dcgm_scrape()
+            _dcg_cache["gpus"] = data["gpus"]
+            _dcg_cache["gpu_name"] = data.get("gpu_name")
+            _dcg_cache["hostname"] = data.get("hostname")
             _dcg_cache["ts"] = time.time()
         except Exception:
             pass   # letzter guter Stand bleibt (bis 10 s alt → Fallback auf Prometheus)
@@ -314,6 +331,11 @@ def build_metrics():
         "gpus": gpus,
         "ollama": ollama,
         "power_limit_w": POWER_LIMIT_W,
+        # Universell: GPU-Modellname + Hostname aus dem DCGM-Exporter (keine hartkodierten Strings);
+        # LM_SERVER_NAME überschreibt die Bezeichnung (DCGM-Hostname ist oft nur eine Container-ID)
+        "gpu_name": _dcg_cache.get("gpu_name"),
+        "hostname": _dcg_cache.get("hostname"),
+        "server_name": SERVER_NAME or None,
         "system": _sys_cache["data"] if _sys_cache["data"] and time.time() - _sys_cache["ts"] < 15 else None,
     }
 

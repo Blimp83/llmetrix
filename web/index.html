@@ -52,9 +52,7 @@
   <header class="relative z-10 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3 sm:gap-0 border-b border-cyan-500/30 pb-4 bg-slate-950/80 p-3 sm:p-4 rounded-b-lg">
     <div>
       <h1 class="text-base sm:text-2xl font-black tracking-widest text-cyan-400 glow-cyan">LLMetrix // Neural Matrix</h1>
-      <p class="text-[10px] sm:text-xs text-slate-400 mt-1">
-        AI SERVER 192.168.178.40 &mdash; DUAL RTX 5060 Ti &mdash; LIVE TELEMETRY VIA NAP GATEWAY
-      </p>
+      <p class="text-[10px] sm:text-xs text-slate-400 mt-1" id="server-sub">AI SERVER -- &mdash; GPU &mdash; LIVE TELEMETRY</p>
     </div>
     <div class="flex items-center space-x-3 bg-slate-900/90 p-2 border border-slate-800 rounded">
       <span id="link-state" class="text-[10px] text-slate-500 px-1">LINK: --</span>
@@ -390,6 +388,7 @@
     // Trigger-Rate + Länge ∝ GPU-Aktivität. Token-Streams fließen von den Kanten in den Kern (∝ t/s).
     let live = { gpu0: null, gpu1: null };   // aktuelle GPU-Daten
     let powerLimitW = 180;                    // Max-Power der Karte (aus /api/metrics, Default RTX 5060 Ti)
+    let hostInfo = { hostname: null, gpu_name: null };   // universell: aus DCGM-Labels (kein hartkodeter Server/GPU-Name)
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für ORB-Tile
 
@@ -848,10 +847,10 @@
         el.title = (sys.ram_used_mb / 1024).toFixed(1) + ' / ' + (sys.ram_total_mb / 1024).toFixed(1) + ' GB';
         drawVramBox('sys-i-ram', sys.ram_used_mb / 1024, sys.ram_total_mb / 1024, '#22d3ee');
       }
-      // Caption: Host-Kapazität (Cores + RAM-Gesamt) — zwei saubere Zeilen
+      // Caption: Host-Kapazität (Cores + RAM-Gesamt) — zwei saubere Zeilen, Hostname aus DCGM-Labels
       const cap = $('sys-cap');
       if (cap) {
-        const lines = ['HOST: AI-SERVER .40'];
+        const lines = ['HOST: ' + (hostInfo.hostname || 'AI-SERVER')];
         const parts = [];
         if (sys.ncpu) parts.push(sys.ncpu + ' CORES');
         if (sys.ram_total_mb) parts.push((sys.ram_total_mb / 1024).toFixed(0) + ' GB RAM');
@@ -1097,6 +1096,18 @@
 
         const g0 = m.gpus && m.gpus['0'], g1 = m.gpus && m.gpus['1'];
         if (m.power_limit_w) powerLimitW = m.power_limit_w;
+        // Universell: Server-Bezeichnung + GPU-Namen aus dem Backend (DCGM-Labels) statt hartkodeter Strings
+        if (m.hostname || m.gpu_name) {
+          hostInfo.hostname = m.server_name || (m.hostname && !/^[0-9a-f]{12}$/.test(m.hostname) ? m.hostname : null) || hostInfo.hostname;
+          hostInfo.gpu_name = m.gpu_name || hostInfo.gpu_name;
+          const sub = $('server-sub');
+          if (sub && m.gpu_name) {
+            const n = Object.keys(m.gpus || {}).length;
+            const hostLabel = m.server_name || (hostInfo.hostname ? 'AI SERVER ' + hostInfo.hostname : '?');
+            sub.innerText = hostLabel + ' — ' + (n > 1 ? n + '× ' : '') + m.gpu_name + ' — LIVE TELEMETRY';
+          }
+          if (m.gpu_name) { $('gpu0-name').innerText = m.gpu_name; $('gpu1-name').innerText = m.gpu_name; }
+        }
         if (g0) { live.gpu0 = g0; setGpuCard('gpu0', g0); }
         if (g1) { live.gpu1 = g1; setGpuCard('gpu1', g1); }
         if (m.system) setSystem(m.system);
