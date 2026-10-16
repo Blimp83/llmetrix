@@ -1,3 +1,6 @@
+# LLMetrix — Dashboard für Ollama-Cluster mit NVIDIA-GPUs.
+# Lokale Werte (URLs, Server-Name) gehören in eine docker-compose.override.yml
+# (wird automatisch gemergt) oder direkt als Env-Vars übergeben.
 services:
   llmetrix:
     image: python:3.13-slim
@@ -11,17 +14,21 @@ services:
       - ./data:/data
     environment:
       - LM_PORT=8790
-      - LMPROM_URL=http://192.168.178.22:9090
-      - LM_OLLAMA_GPU0=https://rtx-gpu0.obsy.icu
-      - LM_OLLAMA_GPU1=https://rtx-gpu1.obsy.icu
-      - LM_OLLAMA_DUAL=https://rtx-dual.obsy.icu
-      - LM_LOKI_URL=http://192.168.178.22:3100
+      # Ollama-Endpoints (URLs der Ollama-Instanzen, http(s))
+      - LM_OLLAMA_GPU0=http://127.0.0.1:11434
+      - LM_OLLAMA_GPU1=http://127.0.0.1:11435
+      - LM_OLLAMA_DUAL=http://127.0.0.1:11436
+      # GPU-Metriken: DCGM-Exporter (primär, direkter Scrape) + Prometheus (Fallback)
+      - LM_DCGM_URL=http://127.0.0.1:9400
+      - LMPROM_URL=http://127.0.0.1:9090
+      # System-Metriken (CPU/RAM): node-exporter
+      - LM_NODE_URL=http://127.0.0.1:9100
+      # Logs + Live t/s: Loki (optional — ohne Loki fehlen Log-Panel, t/s-Sparklines, MTP-Badge)
+      - LM_LOKI_URL=http://127.0.0.1:3100
+      # Optional: freundliche Server-Bezeichnung im Header (sonst wird der DCGM-Hostname genommen)
+      # - LM_SERVER_NAME=Mein AI-Server
+      # Max-Power der GPU in W (für den Power-Anzeiger, Default 180 = RTX 5060 Ti)
+      # - LM_POWER_LIMIT_W=180
       - LM_HIST_FILE=/data/history.json
-      - LM_SERVER_NAME=AI-Server .40
     command: ["python3", "-u", "/app/server.py"]
-    networks:
-      - proxy
 
-networks:
-  proxy:
-    external: true

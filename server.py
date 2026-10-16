@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
-"""LLMetrix Backend — Aggregiert GPU-Metriken (Prometheus/DCGM) + Ollama-Status
-und serviert das Dashboard. Läuft auf .22, Daten kommen von .40.
+"""LLMetrix Backend — Aggregiert GPU-Metriken (DCGM/Prometheus) + Ollama-Status
+und serviert das Dashboard. Konfiguration komplett über Env-Vars (LM_*).
 
 Endpoints:
   GET  /            -> Dashboard (web/index.html)
@@ -18,14 +18,14 @@ import urllib.request
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
-PROM_URL = os.environ.get("LMPROM_URL", "http://192.168.178.22:9090")
-DCGM_URL = os.environ.get("LM_DCGM_URL", "http://192.168.178.40:9400")   # direkter Exporter-Scrape (~17 ms) statt Prometheus (5–15 s Latenz)
-POWER_LIMIT_W = float(os.environ.get("LM_POWER_LIMIT_W", "180"))   # Max-Power der Karte (RTX 5060 Ti = 180 W) — für den Power-Donut
+PROM_URL = os.environ.get("LMPROM_URL", "http://127.0.0.1:9090")
+DCGM_URL = os.environ.get("LM_DCGM_URL", "http://127.0.0.1:9400")   # direkter Exporter-Scrape (~17 ms) statt Prometheus (5–15 s Latenz)
+POWER_LIMIT_W = float(os.environ.get("LM_POWER_LIMIT_W", "180"))   # Max-Power der Karte (RTX 5060 Ti = 180 W) — für den Power-Anzeiger
 SERVER_NAME = os.environ.get("LM_SERVER_NAME", "")   # optionale freundliche Server-Bezeichnung fürs Dashboard
 OLLAMA_EP = {
-    "gpu0": os.environ.get("LM_OLLAMA_GPU0", "https://rtx-gpu0.obsy.icu"),
-    "gpu1": os.environ.get("LM_OLLAMA_GPU1", "https://rtx-gpu1.obsy.icu"),
-    "dual": os.environ.get("LM_OLLAMA_DUAL", "https://rtx-dual.obsy.icu"),
+    "gpu0": os.environ.get("LM_OLLAMA_GPU0", "http://127.0.0.1:11434"),
+    "gpu1": os.environ.get("LM_OLLAMA_GPU1", "http://127.0.0.1:11435"),
+    "dual": os.environ.get("LM_OLLAMA_DUAL", "http://127.0.0.1:11436"),
 }
 TIMEOUT = float(os.environ.get("LM_TIMEOUT", "8"))   # Ollama antwortet unter Inferenzlast teils 2–4 s
 LOKI_URL = os.environ.get("LM_LOKI_URL", "http://localhost:3100")
@@ -194,7 +194,7 @@ _DCGM_RE = re.compile(r'^(DCGM_FI_DEV_(?:GPU_UTIL|FB_USED|FB_FREE|GPU_TEMP|POWER
 _DCGM_LABEL_RE = re.compile(r'^DCGM_FI_DEV_\w+\{([^}]*)\}')
 
 # node-exporter (AI-Server-System: CPU/RAM)
-NODE_URL = os.environ.get("LM_NODE_URL", "http://192.168.178.40:9100")
+NODE_URL = os.environ.get("LM_NODE_URL", "http://127.0.0.1:9100")
 _NODE_RE = re.compile(r'^(node_cpu_seconds_total|node_memory_MemTotal_bytes|node_memory_MemAvailable_bytes)\{?([^}]*)\}?\s+([0-9.]+(?:[eE][+-]?[0-9]+)?)\s*$')
 _sys_cache = {"ts": 0, "data": None}
 

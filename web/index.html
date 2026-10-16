@@ -926,7 +926,7 @@
     }
 
     // ── 4b. MODEL SPEC (ollama show des aktiven Containers) + GPU-Chips ───
-    const specCache = {};   // gpu -> {t, d}  (60 s Cache — show ist lokal auf .40 schnell)
+    const specCache = {};   // gpu -> {t, d}  (60 s Cache — /api/show ist unter Last langsam)
     async function fetchModelInfo(gpu) {
       if (specCache[gpu] && Date.now() - specCache[gpu].t < 60000) return specCache[gpu].d;
       try {
@@ -1089,7 +1089,7 @@
         $('link-state').className = 'text-[10px] text-emerald-400 px-1 font-bold';
 
         if (!m.ai_server_online) {
-          log('[OFFLINE]: AI Server (.40) nicht erreichbar — Wake-on-LAN via Nap-Gateway möglich.', 'text-red-400');
+          log('[OFFLINE]: AI Server nicht erreichbar — Wake-on-LAN via Nap-Gateway möglich.', 'text-red-400');
           brainData.online = false; brainUpdate();
           return;
         }
