@@ -226,6 +226,7 @@ def _node_scrape():
     _sys_cache["ts"] = now
     return {
         "cpu_pct": cpu_pct,
+        "ncpu": ncpu or None,
         "ram_total_mb": round(mem_total / 1e6) if mem_total else None,
         "ram_used_mb": round((mem_total - mem_avail) / 1e6) if (mem_total and mem_avail is not None) else None,
     }

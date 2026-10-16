@@ -157,10 +157,10 @@
         </div>
       </div>
 
-      <!-- MODEL SPEC (links) + METRIKEN: VRAM / GPU OFFLOAD / AI-SERVER SYSTEM (rechts gestapelt) -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 items-start">
-        <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show) -->
-        <div id="spec-block" class="hidden bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
+      <!-- MODEL SPEC (links) + VRAM/OFFLOAD + AI-SERVER SYSTEM (rechts, nebeneinander) — gleich hohe Kacheln -->
+      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+        <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show). IMMER sichtbar → reserviert Platz, kein Layout-Jump wenn befüllt. -->
+        <div id="spec-block" class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
           <div class="flex justify-between items-center mb-1.5 gap-2">
             <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
             <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
@@ -171,35 +171,32 @@
             <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
           </div>
         </div>
-        <div class="space-y-3">
-          <!-- VRAM FOOTPRINT + GPU OFFLOAD -->
-          <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
-            <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
-            <div class="flex items-center justify-between gap-3 mt-1">
-              <div class="text-2xl font-black text-teal-300 glow-core whitespace-nowrap" id="core-vram">-- GB</div>
-              <div class="flex items-center gap-2 shrink-0">
-                <div class="text-right">
-                  <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
-                  <div id="offload-cap" class="text-[10px] text-slate-500">--</div>
-                </div>
-                <svg id="offload-donut" width="42" height="42" viewBox="0 0 46 46"></svg>
-              </div>
+        <!-- VRAM FOOTPRINT + GPU OFFLOAD -->
+        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5 flex flex-col">
+          <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
+          <div class="text-2xl font-black text-teal-300 glow-core whitespace-nowrap mt-1" id="core-vram">--</div>
+          <div class="flex items-center justify-between gap-2 mt-auto pt-2">
+            <div class="text-right min-w-0">
+              <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
+              <div id="offload-cap" class="text-[10px] text-slate-500 truncate">--</div>
             </div>
+            <svg id="offload-donut" width="40" height="40" viewBox="0 0 46 46" class="shrink-0"></svg>
           </div>
-          <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
-          <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5" id="sys-wrap">
-            <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
-            <div class="flex items-center gap-2">
-              <span class="text-[9px] text-slate-500 w-8 shrink-0">CPU</span>
-              <div class="bar-track h-1.5 rounded flex-1"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
-              <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
-            </div>
-            <div class="flex items-center gap-2 mt-1.5">
-              <span class="text-[9px] text-slate-500 w-8 shrink-0">RAM</span>
-              <div class="bar-track h-1.5 rounded flex-1"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
-              <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
-            </div>
+        </div>
+        <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
+        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5 flex flex-col" id="sys-wrap">
+          <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
+          <div class="flex items-center gap-2">
+            <span class="text-[9px] text-slate-500 w-8 shrink-0">CPU</span>
+            <div class="bar-track h-1.5 rounded flex-1"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
+            <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
           </div>
+          <div class="flex items-center gap-2 mt-1.5">
+            <span class="text-[9px] text-slate-500 w-8 shrink-0">RAM</span>
+            <div class="bar-track h-1.5 rounded flex-1"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
+            <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
+          </div>
+          <div id="sys-cap" class="text-[8px] text-slate-500 mt-auto pt-2">--</div>
         </div>
       </div>
 
@@ -848,6 +845,16 @@
         const title = (sys.ram_used_mb / 1024).toFixed(1) + ' / ' + (sys.ram_total_mb / 1024).toFixed(1) + ' GB';
         el.title = title;
       }
+      // Caption: Host-Kapazität (Cores + RAM-Gesamt) — zwei saubere Zeilen
+      const cap = $('sys-cap');
+      if (cap) {
+        const lines = ['HOST: AI-SERVER .40'];
+        const parts = [];
+        if (sys.ncpu) parts.push(sys.ncpu + ' CORES');
+        if (sys.ram_total_mb) parts.push((sys.ram_total_mb / 1024).toFixed(0) + ' GB RAM');
+        if (parts.length) lines.push(parts.join(' · '));
+        cap.innerHTML = lines.join('<br>');
+      }
     }
 
     function setGpuCard(slot, g) {
@@ -934,7 +941,18 @@
 
     function setSpec(gpuKey, mi) {
       const blk = $('spec-block');
-      if (!mi || !mi.models || !mi.models.length) { blk.classList.add('hidden'); return; }
+      if (!mi || !mi.models || !mi.models.length) {
+        // Platz bleibt reserviert (kein Layout-Jump) — nur auf Placeholder zurücksetzen.
+        $('spec-src').innerText = '--';
+        $('spec-caps').innerText = '';
+        $('spec-arch').innerText = '--';
+        $('spec-size').innerText = '--';
+        $('spec-quant').innerText = '--';
+        $('spec-ctx').innerText = '--';
+        $('spec-build').innerText = '--';
+        $('spec-extra').innerText = '--';
+        return;
+      }
       const m = mi.models[mi.models.length - 1], s = m.spec || {};
       const ctx = m.effective_ctx || m.modelfile_ctx;
       $('spec-src').innerText = gpuKey.toUpperCase();
