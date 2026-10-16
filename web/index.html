@@ -183,18 +183,22 @@
             <svg id="offload-donut" width="40" height="40" viewBox="0 0 46 46" class="shrink-0"></svg>
           </div>
         </div>
-        <!-- AI-Server System (CPU/RAM) — betrifft jedes Modell, unabhängig von GPU-Metriken -->
+        <!-- AI-Server System (CPU/RAM) — gleiche Metrik-Symbole wie GPU-Tile: Tacho (CPU) + 3D-Quader (RAM) -->
         <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5 flex flex-col" id="sys-wrap">
           <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
-          <div class="flex items-center gap-2">
-            <span class="text-[9px] text-slate-500 w-8 shrink-0">CPU</span>
-            <div class="bar-track h-1.5 rounded flex-1"><div id="sys-cpu-bar" class="h-full bg-teal-400 rounded transition-all duration-500" style="width:0%"></div></div>
-            <span id="sys-cpu" class="text-[10px] font-bold text-teal-300 w-9 text-right">--%</span>
+          <div class="flex items-center gap-1.5 min-w-0">
+            <canvas id="sys-i-cpu" class="w-8 h-[56px] shrink-0"></canvas>
+            <div class="flex flex-col min-w-0 leading-none">
+              <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">CPU</div>
+              <div id="sys-cpu" class="font-black text-teal-300 text-base sm:text-xl">--%</div>
+            </div>
           </div>
-          <div class="flex items-center gap-2 mt-1.5">
-            <span class="text-[9px] text-slate-500 w-8 shrink-0">RAM</span>
-            <div class="bar-track h-1.5 rounded flex-1"><div id="sys-ram-bar" class="h-full bg-cyan-400 rounded transition-all duration-500" style="width:0%"></div></div>
-            <span id="sys-ram" class="text-[10px] font-bold text-cyan-300 w-9 text-right">--%</span>
+          <div class="flex items-center gap-1.5 min-w-0 mt-2">
+            <canvas id="sys-i-ram" class="w-8 h-[56px] shrink-0"></canvas>
+            <div class="flex flex-col min-w-0 leading-none">
+              <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">RAM</div>
+              <div id="sys-ram" class="font-black text-cyan-300 text-base sm:text-xl">--%</div>
+            </div>
           </div>
           <div id="sys-cap" class="text-[8px] text-slate-500 mt-auto pt-2">--</div>
         </div>
@@ -828,22 +832,21 @@
     }
 
     function setSystem(sys) {
-      // sys: {cpu_pct, ram_total_mb, ram_used_mb} | null
+      // sys: {cpu_pct, ncpu, ram_total_mb, ram_used_mb} | null
       if (!sys) return;
       if (sys.cpu_pct != null) {
         const el = $('sys-cpu');
         el.innerText = Math.round(sys.cpu_pct) + '%';
         el.style.color = sys.cpu_pct > 90 ? '#f87171' : '';
-        $('sys-cpu-bar').style.width = Math.min(100, sys.cpu_pct).toFixed(1) + '%';
+        drawTacho('sys-i-cpu', sys.cpu_pct, '#2dd4bf');
       }
       if (sys.ram_total_mb && sys.ram_used_mb != null) {
         const pct = Math.min(100, 100 * sys.ram_used_mb / sys.ram_total_mb);
         const el = $('sys-ram');
         el.innerText = Math.round(pct) + '%';
         el.style.color = pct > 90 ? '#f87171' : '';
-        $('sys-ram-bar').style.width = pct.toFixed(1) + '%';
-        const title = (sys.ram_used_mb / 1024).toFixed(1) + ' / ' + (sys.ram_total_mb / 1024).toFixed(1) + ' GB';
-        el.title = title;
+        el.title = (sys.ram_used_mb / 1024).toFixed(1) + ' / ' + (sys.ram_total_mb / 1024).toFixed(1) + ' GB';
+        drawVramBox('sys-i-ram', sys.ram_used_mb / 1024, sys.ram_total_mb / 1024, '#22d3ee');
       }
       // Caption: Host-Kapazität (Cores + RAM-Gesamt) — zwei saubere Zeilen
       const cap = $('sys-cap');
