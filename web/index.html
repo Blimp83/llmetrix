@@ -394,7 +394,7 @@
 
     const brainCanvas = document.getElementById('brain-canvas');
     const B = { w: 0, h: 0, dpr: 1, pts: [], streams: null, rain: null };
-    const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, dual: false, online: false };
+    const brainData = { load0: 0, tps0: 0, load1: 0, tps1: 0, tpsD: 0, dual: false, online: false };
     const clamp01 = v => Math.max(0, Math.min(1, v));
 
     function buildBrain() {
@@ -459,6 +459,7 @@
       brainData.load0 = g0 ? g0.load : 0; brainData.load1 = g1 ? g1.load : 0;
       brainData.tps0 = (l0 && l0.active) ? (l0.current_tps || 0) : 0;
       brainData.tps1 = (l1 && l1.active) ? (l1.current_tps || 0) : 0;
+      brainData.tpsD = (ld && ld.active) ? (ld.current_tps || 0) : 0;   // Dual-t/s (wichtig: bei DUAL sind tps0/tps1 null!)
       brainData.dual = !!(ld && ld.active);
       brainData.online = !!(g0 || g1);
       $('brain-g0').innerText = 'GPU0: ' + (g0 ? Math.round(g0.load) + '%' : '--') + (brainData.tps0 ? ' · ' + Math.round(brainData.tps0) + ' tk/s' : '');
@@ -486,7 +487,7 @@
       if (brainData.tps0 > 0) actL = Math.max(actL, Math.min(1, brainData.tps0 / 45));
       if (brainData.tps1 > 0) actR = Math.max(actR, Math.min(1, brainData.tps1 / 45));
       if (brainData.dual) {
-        const td = Math.min(1, ((brainData.tps0 || 0) + (brainData.tps1 || 0)) / 70);
+        const td = Math.min(1, brainData.tpsD / 70);
         actL = Math.max(actL, td); actR = Math.max(actR, td);
       }
       const idle = 0.06 + 0.03 * Math.sin(t * 0.8);
