@@ -171,38 +171,34 @@
             <div><span class="text-slate-500">EXTRA</span> <span id="spec-extra">--</span></div>
           </div>
         </div>
-        <!-- VRAM FOOTPRINT + GPU OFFLOAD -->
-        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full">
-          <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
-          <div class="text-2xl font-black text-teal-300 glow-core whitespace-nowrap mt-1" id="core-vram">--</div>
-          <div class="flex items-center justify-between gap-2 mt-auto pt-2">
-            <div class="text-right min-w-0">
-              <div class="text-[9px] text-slate-400 tracking-wider">GPU OFFLOAD</div>
-              <div id="offload-cap" class="text-[10px] text-slate-500 truncate">--</div>
-            </div>
-            <svg id="offload-donut" width="40" height="40" viewBox="0 0 46 46" class="shrink-0"></svg>
-          </div>
-        </div>
-        <!-- AI-Server System (CPU/RAM) — gleiche Metrik-Symbole wie GPU-Tile: Tacho (CPU) + 3D-Quader (RAM) -->
+        <!-- VRAM FOOTPRINT + AI-SERVER SYSTEM — eine Kachel, damit mobile nicht zwei halbleere stehen -->
         <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full" id="sys-wrap">
-          <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
-          <div class="flex items-center gap-3 min-w-0">
+          <div class="text-[9px] font-bold tracking-widest text-teal-300/90 mb-1.5">VRAM FOOTPRINT &middot; AI-SERVER SYSTEM</div>
+          <div class="flex items-center justify-between gap-2 min-w-0">
+            <div class="min-w-0">
+              <div class="text-[9px] text-slate-400 tracking-wider">VRAM</div>
+              <div class="font-black text-teal-300 text-base sm:text-lg leading-none mt-0.5" id="core-vram">--</div>
+            </div>
             <div class="flex items-center gap-1.5 min-w-0">
               <canvas id="sys-i-cpu" class="w-10 h-[64px] shrink-0"></canvas>
               <div class="flex flex-col min-w-0 leading-none">
                 <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">CPU</div>
-                <div id="sys-cpu" class="font-black text-teal-300 text-base sm:text-lg">--%</div>
+                <div id="sys-cpu" class="font-black text-teal-300 text-base sm:text-lg leading-none">--%</div>
               </div>
             </div>
             <div class="flex items-center gap-1.5 min-w-0">
               <canvas id="sys-i-ram" class="w-10 h-[64px] shrink-0"></canvas>
               <div class="flex flex-col min-w-0 leading-none">
                 <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">RAM</div>
-                <div id="sys-ram" class="font-black text-cyan-300 text-base sm:text-lg">--%</div>
+                <div id="sys-ram" class="font-black text-cyan-300 text-base sm:text-lg leading-none">--%</div>
               </div>
             </div>
           </div>
-          <div id="sys-cap" class="text-[8px] text-slate-500 mt-auto pt-2">--</div>
+          <div class="flex items-center justify-between gap-2 mt-auto pt-1.5 border-t border-teal-500/20">
+            <div class="text-[9px] text-slate-400 tracking-wider min-w-0">GPU OFFLOAD <span id="offload-cap" class="text-slate-500 truncate">--</span></div>
+            <svg id="offload-donut" width="34" height="34" viewBox="0 0 46 46" class="shrink-0"></svg>
+          </div>
+          <div id="sys-cap" class="text-[8px] text-slate-500 pt-1.5 border-t border-teal-500/20">--</div>
         </div>
       </div>
 
