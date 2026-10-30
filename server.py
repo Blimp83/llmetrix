@@ -611,6 +611,7 @@ NAP_TOKEN = os.environ.get("LM_NAP_TOKEN", "")
 
 NAP_TTL = 5
 _NAP_CACHE = {"ts": 0, "services": None, "host": {}}
+_NAP_SEEN = {}   # name -> {first_seen, running_since, idle_since} (ISO)
 
 
 def nap_get(path):
@@ -631,6 +632,24 @@ def get_nap():
             return cached
         services = nap_get("/v1/services") or []
         host = nap_get("/v1/host") or {}
+        # Idle-Timer: napd liefert keinen Event-Endpunkt → wir führen die Seen-Zeit pro Service
+        # selbst nach. running_since ist der erste Poll, seit dem der Service läuft; idle_since der
+        # erste Poll, seit dem er nicht mehr lief. Beides nur in diesem Prozess (kein Nap-Persist).
+        now_iso = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        for s in services:
+            name = s.get("name")
+            seen = _NAP_SEEN.setdefault(name, {"first_seen": now_iso, "running_since": None, "idle_since": None})
+            if s.get("running"):
+                if seen["running_since"] is None:
+                    seen["running_since"] = now_iso
+                seen["idle_since"] = None
+            else:
+                if seen["idle_since"] is None and seen["first_seen"] != now_iso:
+                    seen["idle_since"] = now_iso
+                seen["running_since"] = None
+            s["first_seen"] = seen["first_seen"]
+            s["running_since"] = seen["running_since"]
+            s["idle_since"] = seen["idle_since"]
         _NAP_CACHE.update({"ts": now, "services": services, "host": host, "url": NAP_URL})
         return _NAP_CACHE
     except Exception as e:

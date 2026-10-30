@@ -1284,6 +1284,16 @@
         cnt.innerText = running + '/' + (nap.services || []).length + ' running';
         cnt.className = 'text-[8px] font-normal tracking-normal ml-1 ' + (running ? 'text-emerald-300' : 'text-slate-500');
       }
+      const timerLine = (s) => {
+        // running_since / idle_since kommen vom Backend (Seen-Zeit, da napd keine Events liefert)
+        const since = s.running ? s.running_since : s.idle_since;
+        if (!since) return '';
+        const secs = Math.max(0, Math.round((Date.now() - new Date(since).getTime()) / 1000));
+        const mm = Math.floor(secs / 60), ss = secs % 60;
+        const txt = secs < 60 ? ss + 's' : mm + 'm ' + String(ss).padStart(2, '0') + 's';
+        const label = s.running ? 'läuft seit' : 'idle seit';
+        return `<div class="text-[8px] ${s.running ? 'text-emerald-400' : 'text-slate-500'} mt-0.5">${label} ${txt}</div>`;
+      };
       const items = (nap.services || []).map(s => {
         const on = s.running;
         const cls = on ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-500 border-slate-700';
@@ -1293,6 +1303,7 @@
             <span class="text-[8px] ${on ? 'text-emerald-300' : 'text-slate-500'}">${on ? 'RUNNING' : s.state}</span>
           </div>
           <div class="text-[8px] text-slate-500 truncate mt-0.5">${escapeHtml(s.container || '')}${s.host ? ' · ' + escapeHtml(s.host) : ''}</div>
+          ${timerLine(s)}
         </div>`;
       }).join('');
       box.innerHTML = items;
