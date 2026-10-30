@@ -1278,11 +1278,12 @@
       const box = $('nap-services');
       if (nap.error) { box.innerHTML = '<div class="text-red-400 text-[10px]">NAP: ' + escapeHtml(nap.error) + '</div>'; return; }
       const running = (nap.services || []).filter(s => s.running).length;
-      // Kopf ist bewusst rahmenlos: er gehört zur Sektion, nicht zur Kachel-Raster darunter
-      const head = `<div class="flex items-center gap-2 px-1 py-0.5 min-w-0">
-        <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">NAP</span>
-        <span class="text-[8px] ${running ? 'text-emerald-300' : 'text-slate-500'} shrink-0">${running}/${(nap.services || []).length} running</span>
-      </div>`;
+      // Zähler in der Sektionsüberschrift, nicht als Kachel → optisch vom Raster entkoppelt
+      const cnt = $('nap-count');
+      if (cnt) {
+        cnt.innerText = running + '/' + (nap.services || []).length + ' running';
+        cnt.className = 'text-[8px] font-normal tracking-normal ml-1 ' + (running ? 'text-emerald-300' : 'text-slate-500');
+      }
       const items = (nap.services || []).map(s => {
         const on = s.running;
         const cls = on ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-500 border-slate-700';
