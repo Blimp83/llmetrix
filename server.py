@@ -796,8 +796,12 @@ def run_benchmark(target):
         model = inst.get("model") or next((x.get("name") for x in (inst.get("models") or [])), None)
         try:
             before = scrape_metrics(t["url"], t["key"])
-            payload = json.dumps({"model": model or "model", "max_tokens": 24, "stream": False,
-                                  "messages": [{"role": "user", "content": "Count from 1 to 20."}]}).encode()
+            # Prompt/Output über Env konfigurierbar → längerer Lauf, damit im Dashboard
+            # mehrere t/s-Punkte und eine sichtbare Aktivität entstehen (Default wie bisher).
+            bprompt = os.environ.get("LM_BENCH_PROMPT", "Count from 1 to 20.")
+            bmax = int(os.environ.get("LM_BENCH_MAX_TOKENS", "24"))
+            payload = json.dumps({"model": model or "model", "max_tokens": bmax, "stream": False,
+                                  "messages": [{"role": "user", "content": bprompt}]}).encode()
             req = urllib.request.Request(t["url"] + "/v1/chat/completions", data=payload,
                                          headers={**auth_headers(t["key"]), "Content-Type": "application/json"})
             t0 = time.time()
