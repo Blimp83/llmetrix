@@ -43,6 +43,8 @@
     body.is-dragging { cursor: grabbing !important; user-select: none; }
     body.is-dragging [data-handle] { cursor: grabbing !important; }
     .draggable-card.live-drag { opacity: 0.6; z-index: 30; cursor: grabbing; outline: 2px dashed rgba(0,240,255,0.7); outline-offset: -2px; box-shadow: 0 18px 50px rgba(0,0,0,0.75), 0 0 26px rgba(0,240,255,0.25) !important; }
+    #bench-buttons { max-width: 100%; }
+    .bench-btn { max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
     [data-handle] { display: inline-flex; align-items: center; justify-content: center; min-width: 26px; min-height: 18px; padding: 0 4px; touch-action: none; font-size: 14px; }
   </style>
 </head>
@@ -54,12 +56,12 @@
       <h1 class="text-base sm:text-2xl font-black tracking-widest text-cyan-400 glow-cyan">LLMetrix // Neural Matrix</h1>
       <p class="text-[10px] sm:text-xs text-slate-400 mt-1" id="server-sub">AI SERVER -- &mdash; GPU &mdash; LIVE TELEMETRY</p>
     </div>
-    <div class="flex items-center space-x-3 bg-slate-900/90 p-2 border border-slate-800 rounded">
-      <span id="link-state" class="text-[10px] text-slate-500 px-1">LINK: --</span>
-      <span class="text-xs text-slate-400 hidden sm:inline">BENCHMARK:</span>
-      <button id="bench-gpu0" onclick="runBenchmark('gpu0')" class="min-w-20 px-2.5 py-1 bg-cyan-950 text-xs text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900 disabled:opacity-40 leading-tight">GPU<br>0</button>
-      <button id="bench-gpu1" onclick="runBenchmark('gpu1')" class="min-w-20 px-2.5 py-1 bg-emerald-950 text-xs text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900 disabled:opacity-40 leading-tight">GPU<br>1</button>
-      <button id="bench-dual" onclick="runBenchmark('dual')" class="min-w-20 px-2.5 py-1 bg-teal-950 text-xs text-teal-300 border border-teal-500/50 rounded hover:bg-teal-900 disabled:opacity-40 leading-tight">DUAL<br>0+1</button>
+    <!-- Mobile: Zeile darf umbrechen, Buttons schrumpfen — sonst läuft die Kachel über den Rand -->
+    <div class="flex flex-wrap items-center gap-2 bg-slate-900/90 p-2 border border-slate-800 rounded max-w-full min-w-0">
+      <span id="link-state" class="text-[10px] text-slate-500 px-1 shrink-0">LINK: --</span>
+      <span class="text-[10px] sm:text-xs text-slate-400 hidden sm:inline">BENCHMARK:</span>
+      <!-- Buttons werden aus /api/metrics (m.targets) gebaut — keine hartkodierten Instanzen -->
+      <span id="bench-buttons" class="flex flex-wrap items-center gap-1.5 min-w-0"></span>
     </div>
   </header>
 
@@ -390,6 +392,21 @@
     let powerLimitW = 180;                    // Max-Power der Karte (aus /api/metrics, Default RTX 5060 Ti)
     let hostInfo = { hostname: null, gpu_name: null };   // universell: aus DCGM-Labels (kein hartkodeter Server/GPU-Name)
     let lastLiveSrc = null;                    // aktivste Quelle laut /api/live_tps (für MODEL SPEC)
+    let targetList = [];                       // Instanzen aus /api/metrics (ollama- und openai-Typen)
+    let targetInfo = {};
+
+    function renderBenchButtons() {
+      const box = $('bench-buttons');
+      if (!targetList.length) return;
+      box.innerHTML = targetList.map(t => {
+        const type = (targetInfo[t] && targetInfo[t].type) || 'instanz';
+        // Einzeilig + truncate: auf mobile ist sonst zu wenig Platz für alle Targets
+        return '<button data-target="' + t + '" onclick="runBenchmark(\'' + t + '\')" ' +
+               'title="' + type + ' — ' + t + '" ' +
+               'class="bench-btn px-2 py-1 bg-teal-950 text-[10px] text-teal-300 border border-teal-500/50 rounded hover:bg-teal-900 disabled:opacity-40 leading-tight whitespace-nowrap">' +
+               t.toUpperCase() + '</button>';
+      }).join('');
+    }
     let lastLiveAll = null;                    // alle Quellen (aktiv/t/s) — für ORB-Tile
 
     const brainCanvas = document.getElementById('brain-canvas');
@@ -977,6 +994,9 @@
       const extra = [];
       if (m.capabilities && m.capabilities.length) extra.push(m.capabilities.join('+'));
       if (s.mtp_layers) extra.push('MTP-Draft ' + s.mtp_layers + 'L');
+      // openai-Typen haben kein `ollama show` → Spec-Feldern aus dem Scrape (Cache/Decode)
+      if (m.cache_hit_pct != null) extra.push('Prefix-Cache ' + m.cache_hit_pct + '%');
+      if (m.decode_tok_s) extra.push('Decode ' + m.decode_tok_s + ' tk/s');
       const sm = [];
       if (m.sampling && m.sampling.temperature != null) sm.push('T' + m.sampling.temperature);
       if (m.sampling && m.sampling.top_k != null) sm.push('K' + m.sampling.top_k);
@@ -1030,7 +1050,7 @@
     async function refreshLiveTps() {
       // Parallel alle drei Quellen fragen → die aktivste (frischeste Gen-Zeile) gewinnt.
       // Damit ist egal, ob Inferenz auf gpu0/gpu1/dual läuft — die Sparklines zeigen immer live.
-      const srcs = ['dual', 'gpu0', 'gpu1'];
+      const srcs = targetList.length ? targetList : ['dual', 'gpu0', 'gpu1'];
       const results = await Promise.all(srcs.map(async s => {
         try {
           const r = await fetch('/api/live_tps?gpu=' + s + '&window=900', { cache: 'no-store' });
@@ -1055,8 +1075,11 @@
 
       const lastGen = [...pts].reverse().find(p => p.kind === 'gen');
       const lastPrompt = [...pts].reverse().find(p => p.kind === 'prompt');
-      $('spark-gen-now').innerText = lastGen ? lastGen.tg.toFixed(1) : '--';
-      $('spark-prompt-now').innerText = lastPrompt ? lastPrompt.tps.toFixed(0) : '--';
+      // openai-Typen liefern die Rate als Einzelwert (letzter Lauf), nicht als Log-Zeile
+      const genNow = lastGen ? lastGen.tg : best.d.last_decode_tok_s;
+      const promptNow = lastPrompt ? lastPrompt.tps : best.d.last_prefill_tok_s;
+      $('spark-gen-now').innerText = genNow != null ? genNow.toFixed(1) : '--';
+      $('spark-prompt-now').innerText = promptNow != null ? promptNow.toFixed(0) : '--';
       // MTP Acceptance-Rate (wird am Ende einer Generation geloggt)
       const mb = $('mtp-badge');
       if (best.d.mtp && best.d.mtp.acc_rate != null) {
@@ -1085,6 +1108,7 @@
         const r = await fetch('/api/metrics', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const m = await r.json();
+        if (m.targets && m.targets.length) { targetList = m.targets; targetInfo = m.target_info || {}; renderBenchButtons(); }
 
         $('link-state').innerText = 'LINK: ONLINE';
         $('link-state').className = 'text-[10px] text-emerald-400 px-1 font-bold';
@@ -1115,9 +1139,10 @@
         brainUpdate();
 
         // Aktives Modell: priorisiert dual (große Modelle), dann gpu0, gpu1
-        const o = m.ollama || {};
+        // Instanzen beider Typen (ollama + openai) — das Backend liefert sie im gleichen Format
+        const o = m.instances || m.ollama || {};
         let source = null, model = null;
-        for (const k of ['dual', 'gpu0', 'gpu1']) {
+        for (const k of (targetList.length ? targetList : ['dual', 'gpu0', 'gpu1'])) {
           if (o[k] && o[k].online && o[k].models && o[k].models.length) { source = k.toUpperCase(); model = o[k].models[0]; break; }
         }
         setCore(source || 'KEIN ENDPOINT AKTIV', model);
@@ -1127,12 +1152,12 @@
         // (aktive Quelle der LIVE-t/s), sonst das geladene Modell. gpu0/gpu1/dual werden
         // alle bedient: wer gerade inference betreibt, dessen Spec steht hier.
         if (source) {
-          const infos = await Promise.all(['gpu0', 'gpu1', 'dual'].map(k => fetchModelInfo(k)));
-          setChip('gpu0', infos[0]);
-          setChip('gpu1', infos[1]);
-          const map = { gpu0: infos[0], gpu1: infos[1], dual: infos[2] };
+          const infos = await Promise.all(targetList.map(k => fetchModelInfo(k)));
+          // Chips bleiben die physischen Karten (DCGM gpu="0"/"1"); nur passende Targets zeigen dort etwas
+          for (const k of targetList) if (document.getElementById(k + '-chip')) setChip(k, await fetchModelInfo(k));
+          const map = {}; targetList.forEach((k, i) => map[k] = infos[i]);
           let specSrc = lastLiveSrc && map[lastLiveSrc] ? lastLiveSrc : null, specMi = null;
-          for (const k of ['dual', 'gpu0', 'gpu1']) {     // Fallback: erster mit geladenem Modell
+          for (const k of targetList) {     // Fallback: erster mit geladenem Modell
             if (k === specSrc) { specMi = { ...specMi, ...map[k] }; break; }
             if (!specMi && map[k] && map[k].models && map[k].models.length) { specSrc = k; specMi = map[k]; }
           }
@@ -1223,8 +1248,8 @@
 
     // ── 7. Benchmark (echte Inferenz) ─────────────────────────────────────
     async function runBenchmark(target) {
-      const btns = ['bench-gpu0', 'bench-gpu1', 'bench-dual'];
-      btns.forEach(id => $(id).disabled = true);
+      const btns = [...document.querySelectorAll('#bench-buttons button')];
+      btns.forEach(b => b.disabled = true);
       log(`[BENCHMARK]: Echte Inferenz auf ${target.toUpperCase()} gestartet — messe Prompt-Eval + Generation...`, 'text-teal-400');
       try {
         const r = await fetch('/api/inference', {
@@ -1240,7 +1265,7 @@
       } catch (e) {
         log(`[BENCHMARK FAIL]: ${e.message}`, 'text-red-400');
       } finally {
-        btns.forEach(id => $(id).disabled = false);
+        btns.forEach(b => b.disabled = false);
       }
     }
 

@@ -31,6 +31,40 @@ TIMEOUT = float(os.environ.get("LM_TIMEOUT", "8"))   # Ollama antwortet unter In
 LOKI_URL = os.environ.get("LM_LOKI_URL", "http://localhost:3100")
 WEB_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "web")
 
+# ── Generische Inference-Targets (ollama oder openai-kompatibel) ─────────────
+# Instanzen sind reine Konfiguration: LM_TARGETS=name=url,name2=url2. Der Typ wird
+# pro Target entschieden — ollama-Typ nutzt /api/ps + /api/show + /api/generate,
+# openai-Typ (/v1) liest seine Metriken aus dem Prometheus-Textformat von /metrics,
+# braucht also kein Loki und keine Docker-Container-Namen. Key pro Target über
+# LM_KEY_<NAME> (oder global LM_OPENAI_KEY). Nichts ist an einen bestimmten Host
+# gebunden: jeder vLLM/Strata/LlamaIndex-kompatible Server funktioniert.
+TARGETS = {}
+for _spec in os.environ.get("LM_TARGETS", "").split(","):
+    _spec = _spec.strip()
+    if not _spec or "=" not in _spec:
+        continue
+    _n, _u = _spec.split("=", 1)
+    TARGETS[_n] = {"url": _u.strip().rstrip("/"), "key": os.environ.get("LM_KEY_" + _n.upper()) or os.environ.get("LM_OPENAI_KEY", "")}
+for _k, _v in OLLAMA_EP.items():          # Legacy-Env bleibt erhalten
+    TARGETS.setdefault(_k, {"url": _v.rstrip("/"), "key": os.environ.get("LM_OPENAI_KEY", "")})
+
+DEFAULT_TARGET = os.environ.get("LM_DEFAULT_TARGET", "")
+
+def resolve_target(gpu):
+    """Target-Namen akzeptieren (ollama- oder openai-Typ), sonst konfigurierbarer Default."""
+    return gpu if gpu in TARGETS else (DEFAULT_TARGET or next(iter(TARGETS), ""))
+
+def target_type(name):
+    return "ollama" if name in OLLAMA_EP else "openai"
+
+def auth_headers(key, accept=None):
+    h = {"User-Agent": "llmetrix"}
+    if key:
+        h["Authorization"] = "Bearer " + key
+    if accept:
+        h["Accept"] = accept
+    return h
+
 # ── History (in-memory, optional persist) ────────────────────────────────
 HIST_FILE = os.environ.get("LM_HIST_FILE", "/data/history.json")
 MAX_HIST = 240
@@ -69,6 +103,38 @@ def _push_history(gen, prompt):
 
 
 # ── Prometheus (DCGM) ─────────────────────────────────────────────────────
+# ── Prometheus-Textformat: direkter Scrape (kein Prometheus nötig) ───────────
+# Wert muss auch Dezimalzahlen und Exponenten erfassen (104.1, 0.985) — sonst fallen
+# alle Gauge-Werte mit Komma durch den Parser und die Instanz zeigt null.
+_PLINE_RE = re.compile(r'^([a-zA-Z_:][\w:]*)(?:\{([^}]*)\})?\s+(\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)\s*$')
+
+def parse_prom_text(text):
+    """{metric: [(labels, value), ...]} aus Prometheus-Text (Exposition Format)."""
+    out = {}
+    for line in text.splitlines():
+        if not line or line.startswith("#"):
+            continue
+        m = _PLINE_RE.match(line)
+        if not m:
+            continue
+        labels = dict(re.findall(r'(\w+)="([^"]*)"', m.group(2) or ""))
+        try:
+            out.setdefault(m.group(1), []).append((labels, float(m.group(3))))
+        except ValueError:
+            pass
+    return out
+
+def scrape_metrics(url, key="", timeout=None):
+    req = urllib.request.Request(url + "/metrics", headers=auth_headers(key, "text/plain"))
+    with urllib.request.urlopen(req, timeout=timeout or TIMEOUT) as r:
+        return parse_prom_text(r.read().decode("utf-8", "replace"))
+
+def pick(series, label, want):
+    for labels, v in series:
+        if labels.get(label) == want:
+            return v
+    return None
+
 def prom_query(query):
     url = f"{PROM_URL}/api/v1/query"
     data = ("query=" + urllib.parse.quote(query)).encode()
@@ -118,12 +184,12 @@ _online_cache = {}   # letzter guter /api/version-Check pro Endpoint (unter Last
 ONLINE_TTL = 60.0
 
 
-def _ps_models_fresh(base, gpu):
+def _ps_models_fresh(base, gpu, key=""):
     """/api/ps mit Retry + Cache-Fallback (unter Inferenz-Lust teils leer). Liefert (models_raw, sysinfo, stale)."""
     models_raw, sysinfo = [], {}
     try:
         for attempt in range(2):
-            with urllib.request.urlopen(base + "/api/ps", timeout=TIMEOUT) as r:
+            with urllib.request.urlopen(urllib.request.Request(base + "/api/ps", headers=auth_headers(key)), timeout=TIMEOUT) as r:
                 ps = json.load(r)
             models_raw = ps.get("models") or []
             sysinfo = ps.get("system_info") or {}
@@ -145,9 +211,10 @@ def _ps_models_fresh(base, gpu):
 
 
 def _ollama_one(key, base):
-    info = {"online": False}
+    apikey = TARGETS.get(key, {}).get("key", "")
+    info = {"online": False, "type": "ollama"}
     try:
-        with urllib.request.urlopen(base + "/api/version", timeout=TIMEOUT) as r:
+        with urllib.request.urlopen(urllib.request.Request(base + "/api/version", headers=auth_headers(apikey)), timeout=TIMEOUT) as r:
             info["version"] = json.load(r).get("version")
             info["online"] = True
         _online_cache[key] = time.time()
@@ -155,7 +222,7 @@ def _ollama_one(key, base):
         # unter Inferenz-Lust teils Timeout → letzter guter Stand vorgehalten (bis 60 s), damit "Modell: none" nicht flackert
         if time.time() - _online_cache.get(key, 0) < ONLINE_TTL:
             info["online"] = True
-    models_raw, sysinfo, stale = _ps_models_fresh(base, key)
+    models_raw, sysinfo, stale = _ps_models_fresh(base, key, TARGETS.get(key, {}).get("key", ""))
     info["vram_total_mib"] = (sysinfo.get("vram_total") or [0])[0]
     models = []
     for m in models_raw:
@@ -176,11 +243,76 @@ def _ollama_one(key, base):
     return key, info
 
 
+def _openai_one(name):
+    """Eine openai-kompatible Instanz (Strata, vLLM, llama.cpp server): Modell + Metriken
+    aus /health und dem /metrics-Scrape. Rein numerisch → kein Loki, keine Log-Regex."""
+    t = TARGETS[name]
+    info = {"online": False, "type": "openai", "url": t["url"]}
+    try:
+        req = urllib.request.Request(t["url"] + "/health", headers=auth_headers(t["key"]))
+        with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+            health = json.load(r)
+        info["online"] = True
+        _online_cache[name] = time.time()
+    except Exception as e:
+        if time.time() - _online_cache.get(name, 0) < ONLINE_TTL:
+            info["online"] = True
+        else:
+            info["error"] = str(e)
+            return name, info
+    try:
+        m = scrape_metrics(t["url"], t["key"])
+    except Exception as e:
+        info["metrics_error"] = str(e)
+        return name, info
+    model = health.get("model") if isinstance(health, dict) else None
+    model = model or next((l.get("model_name") for l, _ in m.get("vllm:num_requests_running", [])), None)
+    g = lambda metric: pick(m.get(metric, []), "model_name", model)
+    info["model"] = model
+    info["max_context"] = g("strata:engine_max_context")
+    info["running"] = int(g("vllm:num_requests_running") or 0)
+    info["waiting"] = int(g("vllm:num_requests_waiting") or 0)
+    info["kv_usage_pct"] = round(100 * (g("vllm:kv_cache_usage_perc") or 0), 1)
+    info["state"] = next((l.get("state") for l, v in m.get("strata:live_state", []) if v == 1), None)
+    info["live_tok_s"] = g("strata:live_tok_s")
+    info["live_prefill_tok_s"] = g("strata:live_prefill_tok_s_mean")
+    q, hit = g("vllm:prefix_cache_queries_total") or 0, g("vllm:prefix_cache_hits_total") or 0
+    info["cache_hit_pct"] = round(100 * hit / q, 1) if q else None
+    info["last_decode_tok_s"] = g("strata:last_decode_tok_s")
+    d, a, n = int(g("vllm:spec_decode_num_draft_tokens_total") or 0), int(g("vllm:spec_decode_num_accepted_tokens_total") or 0), int(g("vllm:request_success_total") or 0)
+    info["mtp"] = {"acc_rate": round(a / d, 3) if d else None, "mean_acc_len": round(a / d, 2) if d else None,
+                   "draft_tokens": d, "accepted_tokens": a}
+    gpus = {}
+    for metric, key_ in (("strata:gpu_util", "load"), ("strata:gpu_mem_used_bytes", "vram_used_mib"),
+                         ("strata:gpu_mem_total_bytes", "vram_total_mib"), ("strata:gpu_temp_celsius", "temp_c"),
+                         ("strata:gpu_power_watts", "power_w")):
+        for labels, v in m.get(metric, []):
+            gpu = labels.get("gpu")
+            if gpu is None:
+                continue
+            cell = gpus.setdefault(gpu, {})
+            cell[key_] = round(v / 1e6) if "bytes" in metric else v
+    info["gpus"] = gpus
+    # Modelle im selben Format wie der ollama-Record (name/ctx/vram_gb), damit das
+    # Frontend beide Instanztypen gleich behandeln kann. params/quant bleiben leer,
+    # wenn der Server sie nicht nennt.
+    vram_gb = round(sum(c.get("vram_used_mib", 0) for c in gpus.values()) / 1024, 1)
+    info["models"] = [{"name": model, "params": None, "quant": None, "ctx": info["max_context"],
+                       "vram_gb": vram_gb, "offload_pct": None}] if model else []
+    return name, info
+
+def get_openai():
+    names = [n for n in TARGETS if target_type(n) == "openai"]
+    if not names:
+        return {}
+    with ThreadPoolExecutor(max_workers=min(4, len(names))) as ex:
+        return dict(ex.map(lambda n: _openai_one(n), names))
+
 def get_ollama():
     # Parallel: Ollama-Server unter Inferenzlast antworten teils langsam (5–12 s) →
     # sequenziell würde /api/metrics auf 10+ s laufen und der Frontend-Poll (2 s) würde timeouten.
     with ThreadPoolExecutor(max_workers=3) as ex:
-        return dict(ex.map(lambda kv: _ollama_one(*kv), OLLAMA_EP.items()))
+        return dict(ex.map(lambda kv: _ollama_one(*kv), [(n, TARGETS[n]["url"]) for n in OLLAMA_EP]))
 
 
 # ── Ollama-Background-Refresher: hält den Stand immer frisch, damit /api/metrics sofort antwortet ──
@@ -308,6 +440,36 @@ def _ollama_refresher():
         time.sleep(3)
 
 
+_openai_cache = {"ts": 0, "data": None}
+_openai_tps = {}          # target -> Punkte. Die Gauges sind Momentwerte, ohne Puffer wäre
+                          # pro Poll genau ein Punkt da → Sparkline wäre leer.
+
+def _openai_refresher():
+    while True:
+        try:
+            data = get_openai()
+            _openai_cache["data"] = data
+            _openai_cache["ts"] = time.time()
+            now = int(time.time())
+            for name, inst in data.items():
+                pts = _openai_tps.setdefault(name, [])
+                if inst.get("live_tok_s"):
+                    pts.append({"t": now, "kind": "gen", "tg": inst["live_tok_s"]})
+                if inst.get("live_prefill_tok_s"):
+                    pts.append({"t": now, "kind": "prompt", "tps": inst["live_prefill_tok_s"]})
+                del pts[:-MAX_HIST]
+        except Exception:
+            pass   # letzter guter Stand bleibt
+        time.sleep(3)
+
+def get_openai_cached():
+    if _openai_cache["data"] is None:
+        try:
+            _openai_cache["data"] = get_openai()
+        except Exception:
+            pass
+    return _openai_cache["data"] or {}
+
 def get_ollama_cached():
     """Letzter guter Ollama-Stand (Background-Refresher); erst beim Start synchron nachladen."""
     if _oll_cache["data"] is None:
@@ -324,12 +486,29 @@ def build_metrics():
     # Fallback auf Prometheus (5–15 s Latenz), falls der Exporter kurz nicht erreichbar ist.
     gpus = get_gpus_live() or get_gpus()
     ollama = get_ollama_cached()
+    openai = get_openai_cached()
+    # Der /metrics-Scrape sieht dieselben physischen Karten wie der DCGM-Exporter
+    # (gpu="0"/"1"). Werte werden pro Karte ergänzt, nicht ersetzt: DCGM bleibt die
+    # Primärquelle für Load/Temp/Power, der Scrape liefert, was DCGM nicht kennt.
+    if isinstance(gpus, dict) and "error" not in gpus:
+        for inst in openai.values():
+            for gpu, cell in (inst.get("gpus") or {}).items():
+                tgt = gpus.setdefault(str(gpu), {})
+                for k, v in cell.items():
+                    if tgt.get(k) is None:
+                        tgt[k] = v
     ai_online = any(g.get("load") is not None for g in gpus.values()) if isinstance(gpus, dict) and "error" not in gpus else False
     return {
         "ts": round(time.time(), 2),
-        "ai_server_online": ai_online,
+        "ai_server_online": ai_online or bool(openai) or any(i.get("online") for i in ollama.values()),
         "gpus": gpus,
         "ollama": ollama,
+        "openai": openai,
+        "instances": {**ollama, **openai},
+        "targets": sorted(TARGETS.keys()),
+        "target_info": {n: {"type": target_type(n), "url": t["url"]} for n, t in TARGETS.items()},
+        # Loki-Labels nur für ollama-Typen (openai-Typen liefern ihre t/s numerisch, ohne Loki)
+        "loki_labels": sorted({n for n in TARGETS if target_type(n) == "ollama"}),
         "power_limit_w": POWER_LIMIT_W,
         # Universell: GPU-Modellname + Hostname aus dem DCGM-Exporter (keine hartkodierten Strings);
         # LM_SERVER_NAME überschreibt die Bezeichnung (DCGM-Hostname ist oft nur eine Container-ID)
@@ -386,6 +565,17 @@ def get_live_tps(gpu, window=900):
                    Fallback: aggregierte "eval time"-Zeile → tps = tokens/ms
       kind=prompt → tps des Prompt-Evals (eigener Punkt, wird nicht gemischt)
     """
+    if gpu in TARGETS and target_type(gpu) == "openai":
+        # Sparkline aus den Live-Gauges des Scrapes (kein Log-Parsing nötig) — Punkte aus dem
+        # Puffer des Refreshers, gefiltert auf den angefragten Window.
+        inst = get_openai_cached().get(gpu) or {}
+        pts = [p for p in _openai_tps.get(gpu, []) if p["t"] >= time.time() - window]
+        return {"gpu": gpu, "points": pts, "count": len(pts), "active": bool(inst.get("running")),
+                "mtp": inst.get("mtp"),
+                # Fallback für die "Jetzt"-Anzeige: live ist nur während eines laufenden Requests
+                # gesetzt, sonst steht die Rate des letzten Laufs da.
+                "last_decode_tok_s": inst.get("last_decode_tok_s"),
+                "last_prefill_tok_s": inst.get("live_prefill_tok_s")}
     try:
         pts = []
         for s in loki_query_range(f'{{job="ollama",gpu="{gpu}"}}', limit=500, seconds=window):
@@ -441,9 +631,9 @@ def _mi_tail(model_info, tail):
     return None
 
 
-def ollama_show(base, name):
+def ollama_show(base, name, key=""):
     req = urllib.request.Request(base + "/api/show", data=json.dumps({"name": name}).encode(),
-                                 headers={"Content-Type": "application/json"})
+                                 headers={**auth_headers(key), "Content-Type": "application/json"})
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.load(r)
 
@@ -451,7 +641,17 @@ def ollama_show(base, name):
 def get_model_info(gpu):
     """Modell-Details eines Containers (dual/gpu0/gpu1) — das JSON-Äquivalent
     von `docker exec ollama-{gpu} ollama show <model>`."""
-    base = OLLAMA_EP.get(gpu)
+    if gpu in TARGETS and target_type(gpu) == "openai":
+        inst = get_openai_cached().get(gpu) or {}
+        vram_gb = round(sum(c.get("vram_used_mib", 0) for c in (inst.get("gpus") or {}).values()) / 1024, 1)
+        return {"gpu": gpu, "online": inst.get("online", False), "type": "openai",
+                "models": [{"name": inst.get("model"), "effective_ctx": inst.get("max_context"),
+                            "size_vram_gb": vram_gb,
+                            "spec": {"native_ctx": inst.get("max_context")},
+                            "cache_hit_pct": inst.get("cache_hit_pct"),
+                            "decode_tok_s": inst.get("last_decode_tok_s")}]}
+    key = TARGETS.get(gpu, {}).get("key", "")
+    base = TARGETS.get(gpu, {}).get("url") or OLLAMA_EP.get(gpu)
     out = {"gpu": gpu, "online": False, "models": []}
     if not base:
         return out
@@ -466,7 +666,7 @@ def get_model_info(gpu):
         else:
             out["error"] = str(e)
             return out
-    models_raw, _sysinfo, _stale = _ps_models_fresh(base, gpu)
+    models_raw, _sysinfo, _stale = _ps_models_fresh(base, gpu, key)
     for m in models_raw:  # letztes Array-Element = zuletzt geladen
         name = m.get("name")
         rec = {
@@ -478,7 +678,7 @@ def get_model_info(gpu):
             "offload_pct": round(100 * m.get("size_vram", 0) / m["size"], 1) if m.get("size") else None,
         }
         try:
-            sh = ollama_show(base, name)
+            sh = ollama_show(base, name, key)
         except Exception as e:
             rec["spec_error"] = str(e)
             out["models"].append(rec)
@@ -536,7 +736,44 @@ def get_model_info(gpu):
 
 # ── Inference Benchmark (echte tk/s) ──────────────────────────────────────
 def run_benchmark(target):
-    base = OLLAMA_EP.get(target)
+    if target in TARGETS and target_type(target) == "openai":
+        t = TARGETS[target]
+        inst = get_openai_cached().get(target) or {}
+        model = inst.get("model") or next((x.get("name") for x in (inst.get("models") or [])), None)
+        try:
+            before = scrape_metrics(t["url"], t["key"])
+            payload = json.dumps({"model": model or "model", "max_tokens": 24, "stream": False,
+                                  "messages": [{"role": "user", "content": "Count from 1 to 20."}]}).encode()
+            req = urllib.request.Request(t["url"] + "/v1/chat/completions", data=payload,
+                                         headers={**auth_headers(t["key"]), "Content-Type": "application/json"})
+            t0 = time.time()
+            with urllib.request.urlopen(req, timeout=90) as r:
+                d = json.load(r)
+            wall = round(time.time() - t0, 2)
+            after = scrape_metrics(t["url"], t["key"])
+            # Der Echo der API ist oft nur der übergebene Alias → für Labels die Modellname
+            # aus dem Scrape nehmen (der ist die Wahrheit des Servers).
+            mname = next((l.get("model_name") for l, _ in after.get("vllm:num_requests_running", [])), None) or d.get("model") or model
+            def g(m, metric): return pick(m.get(metric, []), "model_name", mname)
+            pt, gt = (d.get("usage") or {}).get("prompt_tokens", 0), (d.get("usage") or {}).get("completion_tokens", 0)
+            # Prefill/Decode-Zerlegung: die API liefert keine Zeiten → Delta der Cumulative-Counter.
+            dp = g(after, "strata:totals_prompt_seconds_total")
+            dd = g(after, "strata:totals_decode_seconds_total")
+            if dp is not None and g(before, "strata:totals_prompt_seconds_total") is not None:
+                dp -= g(before, "strata:totals_prompt_seconds_total")
+            if dd is not None and g(before, "strata:totals_decode_seconds_total") is not None:
+                dd -= g(before, "strata:totals_decode_seconds_total")
+            # vLLM/vLLM-kompatible Server zählen Prompt- und Decode-Zeit getrennt;
+            # ein generischer OpenAI-Server nicht → dort bleibt nur wall time.
+            prompt_tps = round(pt / dp, 1) if dp and dp > 0.01 else (round(pt / max(1e-6, wall), 1) if pt else None)
+            gen_tps = round(gt / dd, 1) if dd and dd > 0.01 else (round(gt / max(1e-6, wall), 1) if gt else None)
+            _push_history(gen_tps or 0, prompt_tps or 0)
+            return {"target": target, "model": mname, "wall_s": wall, "prompt_tokens": pt,
+                    "prompt_tps": prompt_tps, "gen_tokens": gt, "gen_tps": gen_tps}
+        except Exception as e:
+            return {"error": str(e)}
+    key = TARGETS.get(target, {}).get("key", "")
+    base = TARGETS.get(target, {}).get("url") or OLLAMA_EP.get(target)
     if not base:
         return {"error": f"unknown target {target}"}
     model = None
@@ -565,7 +802,7 @@ def run_benchmark(target):
         "options": {"num_predict": 24},
     }).encode()
     req = urllib.request.Request(base + "/api/generate", data=payload,
-                                  headers={"Content-Type": "application/json"})
+                                  headers={**auth_headers(key), "Content-Type": "application/json"})
     t0 = time.time()
     try:
         with urllib.request.urlopen(req, timeout=90) as r:
@@ -616,9 +853,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, h)
         if path == "/api/logs":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            gpu = (q.get("gpu", ["dual"])[0] or "dual")
-            if gpu not in ("gpu0", "gpu1", "dual"):
-                gpu = "dual"
+            gpu = resolve_target((q.get("gpu", [""])[0] or ""))
             limit_s = q.get("limit", ["80"])[0]
             try:
                 limit = max(1, min(int(limit_s), 300))
@@ -627,9 +862,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, get_logs(gpu, limit))
         if path == "/api/live_tps":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            gpu = (q.get("gpu", ["dual"])[0] or "dual")
-            if gpu not in ("gpu0", "gpu1", "dual"):
-                gpu = "dual"
+            gpu = resolve_target((q.get("gpu", [""])[0] or ""))
             win_s = q.get("window", ["900"])[0]
             try:
                 window = max(60, min(int(win_s), 3600))
@@ -638,9 +871,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._send(200, get_live_tps(gpu, window))
         if path == "/api/model_info":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
-            gpu = (q.get("gpu", ["dual"])[0] or "dual")
-            if gpu not in ("gpu0", "gpu1", "dual"):
-                gpu = "dual"
+            gpu = resolve_target((q.get("gpu", [""])[0] or ""))
             return self._send(200, get_model_info(gpu))
         # static
         rel = "index.html" if path in ("/", "/index.html") else path.lstrip("/")
@@ -660,7 +891,9 @@ class Handler(BaseHTTPRequestHandler):
             body = json.loads(self.rfile.read(length) or b"{}")
         except Exception:
             return self._send(400, {"error": "bad json"})
-        target = body.get("target", "dual")
+        target = resolve_target(body.get("target", ""))
+        if target not in TARGETS:
+            return self._send(400, {"error": f"unknown target {target}"})
         result = run_benchmark(target)
         code = 200 if "error" not in result else 502
         return self._send(code, result)
@@ -676,4 +909,6 @@ if __name__ == "__main__":
     threading.Thread(target=_ollama_refresher, daemon=True).start()
     threading.Thread(target=_dcgm_refresher, daemon=True).start()
     threading.Thread(target=_node_refresher, daemon=True).start()
+    if any(target_type(n) == "openai" for n in TARGETS):
+        threading.Thread(target=_openai_refresher, daemon=True).start()
     ThreadingHTTPServer(("0.0.0.0", port), Handler).serve_forever()
