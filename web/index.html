@@ -273,7 +273,7 @@
     <!-- Nap (napd Control-API): Container-Status + Ressourcen. Nur sichtbar wenn LM_NAP_URL gesetzt ist -->
     <div id="nap-wrap" class="hidden mt-3 border-t border-cyan-500/20 pt-2">
       <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
-        <span class="text-[9px] font-bold tracking-widest text-teal-300/90">NAP // CONTAINER ORCHESTRATION</span>
+        <span class="text-[9px] font-bold tracking-widest text-teal-300/90">NAP // CONTAINER ORCHESTRATION <span id="nap-count" class="text-[8px] font-normal tracking-normal text-slate-500 ml-1"></span></span>
         <span id="nap-host" class="text-[8px] text-slate-500 truncate min-w-0">--</span>
       </div>
       <div id="nap-services" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5"></div>
@@ -1278,11 +1278,10 @@
       const box = $('nap-services');
       if (nap.error) { box.innerHTML = '<div class="text-red-400 text-[10px]">NAP: ' + escapeHtml(nap.error) + '</div>'; return; }
       const running = (nap.services || []).filter(s => s.running).length;
-      const head = `<div class="border border-teal-500/40 rounded px-1.5 py-1 min-w-0">
-        <div class="flex items-center justify-between gap-2">
-          <span class="text-[9px] font-bold tracking-wider truncate">${running}/${(nap.services || []).length} RUNNING</span>
-          <span class="text-[8px] text-slate-500">NAP</span>
-        </div>
+      // Kopf ist bewusst rahmenlos: er gehört zur Sektion, nicht zur Kachel-Raster darunter
+      const head = `<div class="flex items-center gap-2 px-1 py-0.5 min-w-0">
+        <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">NAP</span>
+        <span class="text-[8px] ${running ? 'text-emerald-300' : 'text-slate-500'} shrink-0">${running}/${(nap.services || []).length} running</span>
       </div>`;
       const items = (nap.services || []).map(s => {
         const on = s.running;
@@ -1295,7 +1294,7 @@
           <div class="text-[8px] text-slate-500 truncate mt-0.5">${escapeHtml(s.container || '')}${s.host ? ' · ' + escapeHtml(s.host) : ''}</div>
         </div>`;
       }).join('');
-      box.innerHTML = head + items;
+      box.innerHTML = items;
     }
 
     async function refreshLogs() {
