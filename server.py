@@ -15,6 +15,7 @@ import threading
 import time
 import urllib.parse
 import urllib.request
+from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
@@ -299,6 +300,7 @@ def _openai_one(name):
     vram_gb = round(sum(c.get("vram_used_mib", 0) for c in gpus.values()) / 1024, 1)
     info["models"] = [{"name": model, "params": None, "quant": None, "ctx": info["max_context"],
                        "vram_gb": vram_gb, "offload_pct": None}] if model else []
+    _activity(name, info)
     return name, info
 
 def get_openai():
@@ -520,6 +522,52 @@ def build_metrics():
 
 
 # ── Loki (Ollama-Docker-Logs) ─────────────────────────────────────────────
+
+# ── Synthetische Aktivitätszeilen ───────────────────────────────────────────
+# Targets ohne Log-Stream (kein Loki) erzeugen Zeilen aus dem Scrape: nur wenn sich
+# etwas ändert, damit der Log nicht zuspamt. Gleiches Format wie get_logs → das
+# Frontend kann beide Quellen im selben Panel zeigen.
+_ACTIVITY = {}
+_PREV = {}
+ACTIVITY_MAX = 100
+
+
+def _activity(name, info):
+    deq = _ACTIVITY.setdefault(name, deque(maxlen=ACTIVITY_MAX))
+    prev = _PREV.get(name)
+    snap = {k: info.get(k) for k in ("state", "running", "waiting", "online", "error")}
+    snap["draft"] = (info.get("mtp") or {}).get("draft_tokens")
+    if prev is None:
+        _PREV[name] = snap
+        return
+    now = time.time()
+    def emit(line, kind="info"):
+        deq.append({"ts": now, "line": line, "kind": kind})
+    if snap["error"] and snap["error"] != prev.get("error"):
+        emit(f"ERROR: {snap['error']}", "error")
+    elif snap["online"] and not prev.get("online"):
+        emit(f"{name}: online ({info.get('model') or '?'})", "ok")
+    elif prev.get("online") and not snap["online"]:
+        emit(f"{name}: offline", "warn")
+    if snap["state"] != prev.get("state"):
+        emit(f"state: {prev.get('state') or '?'} → {snap['state'] or '?'} "
+             f"(running {snap['running']}, waiting {snap['waiting']})",
+             "ok" if snap["state"] == "generating" else "info")
+    elif snap["running"] != prev.get("running") or snap["waiting"] != prev.get("waiting"):
+        emit(f"queue: running {snap['running']}, waiting {snap['waiting']}", "info")
+    m = info.get("mtp") or {}
+    d = m.get("draft_tokens") or 0
+    if prev.get("draft") is not None and d > prev.get("draft"):
+        emit(f"req fertig: decode {info.get('last_decode_tok_s')} tk/s · "
+             f"MTP acc {m.get('acc_rate')} · cache {info.get('cache_hit_pct')} %", "ok")
+    _PREV[name] = snap
+    return deq
+
+
+def get_activity(name, limit=80):
+    return {"gpu": name, "entries": list(_ACTIVITY.get(name, []))[-limit:]}
+
+
 def loki_query_range(query, limit=150, seconds=3600):
     now = int(time.time() * 1e9)
     params = urllib.parse.urlencode({
@@ -859,7 +907,9 @@ class Handler(BaseHTTPRequestHandler):
                 limit = max(1, min(int(limit_s), 300))
             except ValueError:
                 limit = 80
-            return self._send(200, get_logs(gpu, limit))
+            if target_type(gpu) == "ollama":
+                return self._send(200, get_logs(gpu, limit))
+            return self._send(200, get_activity(gpu, limit))
         if path == "/api/live_tps":
             q = urllib.parse.parse_qs(urllib.parse.urlparse(self.path).query)
             gpu = resolve_target((q.get("gpu", [""])[0] or ""))

@@ -262,9 +262,7 @@
     <div class="flex flex-wrap items-center justify-between mb-2 gap-x-3 gap-y-1">
       <div class="flex flex-wrap items-center space-x-2 min-w-0">
         <span class="text-[10px] text-slate-400 tracking-widest">OLLAMA LIVE-LOG</span>
-        <button onclick="switchLogTab('gpu0')" id="logtab-gpu0" class="px-2 py-0.5 text-[10px] bg-cyan-950 text-cyan-300 border border-cyan-500/50 rounded hover:bg-cyan-900">GPU 0</button>
-        <button onclick="switchLogTab('gpu1')" id="logtab-gpu1" class="px-2 py-0.5 text-[10px] bg-emerald-950 text-emerald-300 border border-emerald-500/50 rounded hover:bg-emerald-900">GPU 1</button>
-        <button onclick="switchLogTab('dual')" id="logtab-dual" class="px-2 py-0.5 text-[10px] bg-teal-950 text-teal-300 border border-teal-500/50 rounded hover:bg-teal-900">DUAL</button>
+        <span id="log-tabs" class="flex flex-wrap items-center gap-1.5 min-w-0"></span>
         <span id="log-model" class="text-[10px] text-slate-500 ml-2 break-all"></span>
       </div>
       <div class="flex items-center gap-3 shrink-0">
@@ -1108,7 +1106,7 @@
         const r = await fetch('/api/metrics', { cache: 'no-store' });
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const m = await r.json();
-        if (m.targets && m.targets.length) { targetList = m.targets; targetInfo = m.target_info || {}; renderBenchButtons(); }
+        if (m.targets && m.targets.length) { targetList = m.targets; targetInfo = m.target_info || {}; renderBenchButtons(); renderLogTabs(); }
 
         $('link-state').innerText = 'LINK: ONLINE';
         $('link-state').className = 'text-[10px] text-emerald-400 px-1 font-bold';
@@ -1174,7 +1172,9 @@
 
     // ── 6. Ollama Live-Log (Loki) ────────────────────────────────────────
     let logTab = 'dual';
-    const logColors = { gpu0: 'text-cyan-300', gpu1: 'text-emerald-300', dual: 'text-teal-300' };
+    // Farbpalette pro Target (Index in targetList), damit beliebige Targets aussehen
+    const TAB_COLORS = ['cyan', 'emerald', 'teal', 'violet', 'amber', 'sky'];
+    const tabColor = (name) => TAB_COLORS[Math.max(0, targetList.indexOf(name)) % TAB_COLORS.length];
 
     function activeModelOf(entries) {
       // neueste "load_model"-Zeile → Modellname
@@ -1209,7 +1209,10 @@
       $('log-model').innerText = model ? 'MOD: ' + model : '';
       view.innerHTML = shown.map(e => {
         const t = new Date(e.ts * 1000).toLocaleTimeString('de-DE', { hour12: false });
-        let cls = logColors[gpu] || 'text-slate-300';
+        let cls = 'text-' + tabColor(gpu) + '-300';
+        if (e.kind === 'error') cls = 'text-red-400';
+        else if (e.kind === 'warn') cls = 'text-amber-400';
+        else if (e.kind === 'ok') cls = 'text-emerald-400';
         if (/print_timing|t\/s/.test(e.line)) cls = 'text-emerald-400';
         else if (/\| 200 \|/.test(e.line) && /generate/.test(e.line)) cls = 'text-teal-300';
         return `<div class="${cls}"><span class="text-slate-600">${t}</span> ${escapeHtml(e.line)}</div>`;
@@ -1221,11 +1224,26 @@
       return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     }
 
+    function renderLogTabs() {
+      const box = $('log-tabs');
+      const names = targetList.length ? targetList : ['dual'];
+      if (!names.includes(logTab)) logTab = names[0];
+      box.innerHTML = names.map(n =>
+        `<button onclick="switchLogTab('${n}')" id="logtab-${n}" class="px-2 py-0.5 text-[10px] border rounded">${n.toUpperCase()}</button>`
+      ).join('');
+      setLogTabStyle();
+    }
+
     function setLogTabStyle() {
       const base = 'px-2 py-0.5 text-[10px] border rounded ';
-      $('logtab-gpu0').className = base + (logTab === 'gpu0' ? 'bg-cyan-500/30 text-cyan-200 border-cyan-400' : 'bg-cyan-950 text-cyan-300 border-cyan-500/50 hover:bg-cyan-900');
-      $('logtab-gpu1').className = base + (logTab === 'gpu1' ? 'bg-emerald-500/30 text-emerald-200 border-emerald-400' : 'bg-emerald-950 text-emerald-300 border-emerald-500/50 hover:bg-emerald-900');
-      $('logtab-dual').className = base + (logTab === 'dual' ? 'bg-teal-500/30 text-teal-200 border-teal-400' : 'bg-teal-950 text-teal-300 border-teal-500/50 hover:bg-teal-900');
+      const names = targetList.length ? targetList : ['dual'];
+      names.forEach(n => {
+        const el = $('logtab-' + n);
+        if (!el) return;
+        const c = tabColor(n);
+        el.className = base + (logTab === n ? `bg-${c}-500/30 text-${c}-200 border-${c}-400`
+                                            : `bg-${c}-950 text-${c}-300 border-${c}-500/50 hover:bg-${c}-900`);
+      });
     }
 
     function switchLogTab(gpu) {
@@ -1272,7 +1290,7 @@
     // ── 8. Start ──────────────────────────────────────────────────────────
     pollMetrics();
     refreshLiveTps();
-    setLogTabStyle();
+    renderLogTabs();
     refreshLogs();
     setInterval(pollMetrics, 1000);   // GPU-Last ~live (DCGM-Scrape 1 s) → Polling 1 s
     setInterval(refreshLiveTps, 2000);
