@@ -1294,6 +1294,18 @@
         const label = s.running ? 'läuft seit' : 'idle seit';
         return `<div class="text-[8px] ${s.running ? 'text-emerald-400' : 'text-slate-500'} mt-0.5">${label} ${txt}</div>`;
       };
+      const idleBar = (s) => {
+        if (!s.running && s.idle_limit_s) {
+          const p = Math.max(0, Math.min(100, s.idle_pct || 0));
+          return `<div class="mt-1 h-[3px] bg-slate-800 rounded overflow-hidden" title="Idle ${s.idle_limit_s}s · ${Math.round(p)}% erreicht">
+            <div class="h-full ${p >= 90 ? 'bg-red-400' : p >= 50 ? 'bg-amber-400' : 'bg-teal-500/60'}" style="width:${p}%"></div></div>
+          <div class="text-[8px] text-slate-500 mt-0.5">idle ${s.idle_limit_s}s · ${Math.round(p)}%</div>`;
+        }
+        if (s.running && s.idle_limit_s) {
+          return `<div class="text-[8px] text-slate-500 mt-0.5">idle-limit ${s.idle_limit_s}s</div>`;
+        }
+        return '';
+      };
       const items = (nap.services || []).map(s => {
         const on = s.running;
         const cls = on ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-500 border-slate-700';
@@ -1304,6 +1316,7 @@
           </div>
           <div class="text-[8px] text-slate-500 truncate mt-0.5">${escapeHtml(s.container || '')}${s.host ? ' · ' + escapeHtml(s.host) : ''}</div>
           ${timerLine(s)}
+          ${idleBar(s)}
         </div>`;
       }).join('');
       box.innerHTML = items;

@@ -607,11 +607,57 @@ def get_logs(gpu, limit=80):
 # im Frontend ausgeblendet → nichts ist an einen bestimmten Host oder Daemon gebunden.
 NAP_URL = os.environ.get("LM_NAP_URL", "")
 NAP_TOKEN = os.environ.get("LM_NAP_TOKEN", "")
+# Optional: Pfad zur napd-Config, um die Idle-Settings pro Service zu lesen (die Control-API
+# liefert sie nicht). Ohne diesen Pfad bleibt die Idle-Anzeige leer.
+NAP_CONFIG = os.environ.get("LM_NAP_CONFIG", "")
 
 
 NAP_TTL = 5
 _NAP_CACHE = {"ts": 0, "services": None, "host": {}}
 _NAP_SEEN = {}   # name -> {first_seen, running_since, idle_since} (ISO)
+
+
+def nap_idle_map():
+    """{service: idle_seconds} aus der napd-Config (die Control-API liefert sie nicht)."""
+    if not NAP_CONFIG:
+        return {}
+    try:
+        out, current, in_services = {}, None, False
+        with open(NAP_CONFIG) as f:
+            for line in f:
+                if line.strip() == "services:":
+                    in_services, current = True, None
+                    continue
+                if not in_services or not line.startswith("  "):
+                    continue
+                # Services sind als "  <name>:" keyed, nicht über ein name:-Feld
+                nm = re.match(r"^  (\S+):\s*$", line)
+                if nm:
+                    current = nm.group(1).strip().strip('"')
+                    continue
+                km = re.match(r"^\s*(?:-\s*)?name:\s*(\S+)", line)
+                if km:
+                    current = km.group(1).strip().strip('"')
+                    continue
+                im = re.match(r"^\s*idle:\s*(\S+)", line)
+                if im and current:
+                    out[current] = _nap_idle_seconds({"idle": im.group(1)})
+        # idle: 0 = kein Auto-Stop → nicht filtern, sonst fehlt der Service in der Anzeige
+        return out
+    except Exception:
+        return {}
+
+def _nap_idle_seconds(s):
+    """Idle-Konfiguration pro Service (Sekunden), wenn napd sie liefert."""
+    raw = s.get("idle") or s.get("idle_timeout") or (s.get("policy") or {}).get("idle")
+    if isinstance(raw, (int, float)):
+        return int(raw)
+    if isinstance(raw, str):
+        m = re.match(r"(\d+)\s*(s|m|h)?", raw.strip())
+        if m:
+            n, unit = int(m.group(1)), (m.group(2) or "s")
+            return n * {"s": 1, "m": 60, "h": 3600}[unit]
+    return None
 
 
 def nap_get(path):
@@ -620,6 +666,9 @@ def nap_get(path):
     req = urllib.request.Request(NAP_URL.rstrip("/") + path, headers=auth_headers(NAP_TOKEN, "application/json"))
     with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
         return json.load(r)
+
+
+NAP_IDLE = nap_idle_map()
 
 
 def get_nap():
@@ -650,6 +699,15 @@ def get_nap():
             s["first_seen"] = seen["first_seen"]
             s["running_since"] = seen["running_since"]
             s["idle_since"] = seen["idle_since"]
+            idle_s = _nap_idle_seconds(s) or NAP_IDLE.get(s.get("name"))
+            if idle_s is not None and not s.get("running") and seen["idle_since"]:
+                # Fortschritt Richtung Idle-Stop: wie viel der Idle-Zeit seit dem letzten
+                # Zustandswechsel schon vergangen ist. Erreicht = Stop durch Nap.
+                t0 = time.strptime(seen["idle_since"], "%Y-%m-%dT%H:%M:%SZ")
+                elapsed = int(time.time() - time.mktime(t0))
+                s["idle_elapsed_s"] = max(0, elapsed)
+                s["idle_limit_s"] = idle_s
+                s["idle_pct"] = round(min(100.0, 100 * elapsed / idle_s), 1) if idle_s else None
         _NAP_CACHE.update({"ts": now, "services": services, "host": host, "url": NAP_URL})
         return _NAP_CACHE
     except Exception as e:
