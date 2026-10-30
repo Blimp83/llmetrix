@@ -269,6 +269,15 @@
       </div>
     </div>
     <div id="log-view" class="h-36 overflow-y-auto bg-black/60 border border-slate-800 rounded p-2 text-[11px] leading-relaxed whitespace-pre-wrap break-all scrollbar-thin"></div>
+
+    <!-- Nap (napd Control-API): Container-Status + Ressourcen. Nur sichtbar wenn LM_NAP_URL gesetzt ist -->
+    <div id="nap-wrap" class="hidden mt-3 border-t border-cyan-500/20 pt-2">
+      <div class="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-1.5">
+        <span class="text-[9px] font-bold tracking-widest text-teal-300/90">NAP // CONTAINER ORCHESTRATION</span>
+        <span id="nap-host" class="text-[8px] text-slate-500 truncate min-w-0">--</span>
+      </div>
+      <div id="nap-services" class="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-1.5"></div>
+    </div>
     <div class="mt-2 text-xs text-slate-400">
       STATUS: <span id="live-log" class="text-cyan-400 pulse-slow">LLMetrix initialisiert. Warte auf erstes Telemetrie-Paket vom AI Server...</span>
     </div>
@@ -1105,6 +1114,7 @@
         if (!r.ok) throw new Error('HTTP ' + r.status);
         const m = await r.json();
         if (m.targets && m.targets.length) { targetList = m.targets; targetInfo = m.target_info || {}; renderBenchButtons(); renderLogTabs(); }
+        renderNap(m.nap);
 
         $('link-state').innerText = 'LINK: ONLINE';
         $('link-state').className = 'text-[10px] text-emerald-400 px-1 font-bold';
@@ -1250,6 +1260,42 @@
       logTab = gpu;
       setLogTabStyle();
       refreshLogs();
+    }
+
+    // ── 6b. Nap-Panel (nur wenn LM_NAP_URL gesetzt ist) ─────────────────────
+    function renderNap(nap) {
+      const wrap = $('nap-wrap');
+      if (!wrap) return;
+      if (!nap || (!nap.services && !Object.keys(nap.host || {}).length)) { wrap.classList.add('hidden'); return; }
+      wrap.classList.remove('hidden');
+      const host = nap.host || {};
+      const rt = host.runtime || {}, res = host.resources || {};
+      const g = (res.gpus || []).map(x => x.utilization_percent);
+      $('nap-host').innerText = (rt.host || '?') + ' · ' + (rt.name || '?') + ' ' + (rt.version || '') +
+        ' · ' + ((res.cpu_usage_percent || 0).toFixed(1)) + '% CPU' +
+        ' · ' + (((res.memory_used_bytes || 0) / 1e9).toFixed(1)) + '/' + ((res.memory_bytes || 0) / 1e9).toFixed(1) + ' GB RAM' +
+        (g.length ? ' · GPU ' + g.map(v => v + '%').join('/') : '');
+      const box = $('nap-services');
+      if (nap.error) { box.innerHTML = '<div class="text-red-400 text-[10px]">NAP: ' + escapeHtml(nap.error) + '</div>'; return; }
+      const running = (nap.services || []).filter(s => s.running).length;
+      const head = `<div class="border border-teal-500/40 rounded px-1.5 py-1 min-w-0">
+        <div class="flex items-center justify-between gap-2">
+          <span class="text-[9px] font-bold tracking-wider truncate">${running}/${(nap.services || []).length} RUNNING</span>
+          <span class="text-[8px] text-slate-500">NAP</span>
+        </div>
+      </div>`;
+      const items = (nap.services || []).map(s => {
+        const on = s.running;
+        const cls = on ? 'text-emerald-300 border-emerald-500/40' : 'text-slate-500 border-slate-700';
+        return `<div class="border ${cls} rounded px-1.5 py-1 min-w-0">
+          <div class="flex items-center justify-between gap-2">
+            <span class="text-[9px] font-bold tracking-wider truncate">${escapeHtml(s.name)}</span>
+            <span class="text-[8px] ${on ? 'text-emerald-300' : 'text-slate-500'}">${on ? 'RUNNING' : s.state}</span>
+          </div>
+          <div class="text-[8px] text-slate-500 truncate mt-0.5">${escapeHtml(s.container || '')}${s.host ? ' · ' + escapeHtml(s.host) : ''}</div>
+        </div>`;
+      }).join('');
+      box.innerHTML = head + items;
     }
 
     async function refreshLogs() {

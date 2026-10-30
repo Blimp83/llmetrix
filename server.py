@@ -513,6 +513,7 @@ def build_metrics():
         "target_info": {n: {"type": target_type(n), "url": t["url"]} for n, t in TARGETS.items()},
         # Loki-Labels nur für ollama-Typen (openai-Typen liefern ihre t/s numerisch, ohne Loki)
         "loki_labels": sorted({n for n in TARGETS if target_type(n) == "ollama"}),
+        "nap": get_nap() if NAP_URL else None,
         "power_limit_w": POWER_LIMIT_W,
         # Universell: GPU-Modellname + Hostname aus dem DCGM-Exporter (keine hartkodierten Strings);
         # LM_SERVER_NAME überschreibt die Bezeichnung (DCGM-Hostname ist oft nur eine Container-ID)
@@ -599,6 +600,45 @@ def get_logs(gpu, limit=80):
         return {"gpu": gpu, "entries": entries[-limit:]}
     except Exception as e:
         return {"gpu": gpu, "error": str(e), "entries": []}
+
+
+# ── Nap (napd Control-API) ──────────────────────────────────────────────────
+# Optional: LM_NAP_URL + LM_NAP_TOKEN. Ohne diese beiden Variablen bleibt die Sektion
+# im Frontend ausgeblendet → nichts ist an einen bestimmten Host oder Daemon gebunden.
+NAP_URL = os.environ.get("LM_NAP_URL", "")
+NAP_TOKEN = os.environ.get("LM_NAP_TOKEN", "")
+
+
+NAP_TTL = 5
+_NAP_CACHE = {"ts": 0, "services": None, "host": {}}
+
+
+def nap_get(path):
+    if not NAP_URL:
+        return None
+    req = urllib.request.Request(NAP_URL.rstrip("/") + path, headers=auth_headers(NAP_TOKEN, "application/json"))
+    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+        return json.load(r)
+
+
+def get_nap():
+    """Services + Host-Ressourcen der Nap-Control-API (read-only)."""
+    try:
+        # Cache: Nap-API wird nur alle 5 s abgeholt, damit /api/metrics nicht jeden Poll blockiert
+        now = time.time()
+        cached = _NAP_CACHE
+        if now - cached.get("ts", 0) < NAP_TTL and cached.get("services") is not None:
+            return cached
+        services = nap_get("/v1/services") or []
+        host = nap_get("/v1/host") or {}
+        _NAP_CACHE.update({"ts": now, "services": services, "host": host, "url": NAP_URL})
+        return _NAP_CACHE
+    except Exception as e:
+        # Fehler nicht cachen → nächster Poll versucht erneut, aber nur, wenn noch nichts bekannt ist
+        if _NAP_CACHE.get("services") is not None:
+            _NAP_CACHE["error"] = str(e)
+            return _NAP_CACHE
+        return {"error": str(e), "services": [], "host": {}}
 
 
 # ── Live t/s aus den Ollama-Logzeilen (llama.cpp print_timing) ─────────────
