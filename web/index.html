@@ -88,7 +88,7 @@
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
       </div>
       <!-- 4 Icons (Cyberpunk): LOAD=Tacho / VRAM=3D-Quader / TEMP=Thermometer / POWER=Energiezelle — Wert groß rechts neben dem Symbol -->
-      <div class="grid grid-cols-2 gap-1.5 sm:gap-2">
+      <div class="grid grid-cols-2 gap-2 flex-1">
         <div class="bg-slate-900/90 p-1.5 rounded border border-cyan-500/20 flex items-center gap-1 sm:gap-1.5 min-w-0">
           <canvas id="gpu0-i-load" class="w-9 h-[68px] sm:w-16 sm:h-[84px] shrink-0"></canvas>
           <div class="flex flex-col min-w-0 leading-none">
@@ -146,7 +146,7 @@
       </div>
 
       <!-- Sparklines -->
-      <div class="grid grid-cols-2 gap-2">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 flex-1">
         <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 h-full">
           <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>GENERATION tk/s — LIVE</span><span id="spark-gen-now" class="text-teal-300 font-bold">--</span></div>
           <canvas id="spark-gen" width="420" height="56" class="w-full h-14"></canvas>
@@ -158,9 +158,9 @@
       </div>
 
       <!-- MODEL SPEC (links) + VRAM/OFFLOAD + AI-SERVER SYSTEM (rechts, nebeneinander) — gleich hohe Kacheln -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
         <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show). IMMER sichtbar → reserviert Platz, kein Layout-Jump wenn befüllt. -->
-        <div id="spec-block" class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full">
+        <div id="spec-block" class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full min-w-0">
           <div class="flex justify-between items-center mb-1.5 gap-2">
             <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
             <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
@@ -203,7 +203,7 @@
       </div>
 
       <!-- letzte Benchmark -->
-      <div class="text-[11px] text-slate-400 border-t border-teal-500/20 pt-2">
+      <div class="text-[11px] text-slate-400 border-t border-teal-500/20 pt-2 mt-auto">
         LAST BENCHMARK: <span id="last-bench" class="text-teal-300 font-bold">noch keine Messung</span>
       </div>
     </div>
