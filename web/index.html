@@ -82,7 +82,7 @@
     </div>
 
     <!-- LEFT CORTEX // GPU 0 -->
-    <div id="panel-gpu0" class="draggable-card col-span-6 lg:col-span-3 cyber-card p-2.5 sm:p-5 rounded-lg space-y-2 sm:space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu0" class="draggable-card col-span-6 lg:col-span-3 cyber-card p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-cyan-500/30 pb-2">
         <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-cyan-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">LEFT CORTEX // GPU 0</span></span>
         <span class="text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50" id="gpu0-name">RTX 5060 Ti</span>
@@ -128,9 +128,9 @@
     </div>
 
     <!-- CORE // ACTIVE MODEL (zentrale KPI-Karte) -->
-    <div id="panel-core" class="draggable-card col-span-12 lg:col-span-6 cyber-card-core p-3 sm:p-5 rounded-lg space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-core" class="draggable-card col-span-12 lg:col-span-6 cyber-card-core p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-teal-500/30 pb-2">
-        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-teal-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-teal-300 glow-core">CORE // ACTIVE MODEL</span></span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-teal-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400 glow-core">CORE // ACTIVE MODEL</span></span>
         <span class="flex items-center gap-2">
           <span id="live-badge" class="text-[10px] text-slate-500 font-bold">○ KEINE AKTIVE ERZEUGUNG</span>
           <span id="mtp-badge" class="hidden text-[10px] bg-cyan-950 text-cyan-300 px-2 py-0.5 rounded border border-cyan-500/50 font-mono" title="MTP-Draft: Acceptance-Rate + Ø akzeptierte Länge pro Draft">--</span>
@@ -139,28 +139,28 @@
       </div>
       <div class="min-w-0">
         <div class="text-[10px] text-slate-400">MODEL</div>
-        <div class="text-xl sm:text-2xl font-black text-cyan-100 truncate" id="core-model">KEIN MODELL GELADEN</div>
+        <div class="text-lg sm:text-xl font-black text-cyan-100 truncate leading-tight" id="core-model">KEIN MODELL GELADEN</div>
         <div class="text-xs text-slate-400 mt-1">
           <span id="core-params">--</span> &middot; <span id="core-quant">--</span> &middot; CTX <span id="core-ctx">--</span>
         </div>
       </div>
 
       <!-- Sparklines -->
-      <div class="grid grid-cols-2 gap-3">
-        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20">
+      <div class="grid grid-cols-2 gap-2">
+        <div class="bg-slate-900/90 p-2 rounded border border-cyan-500/20 h-full">
           <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>GENERATION tk/s — LIVE</span><span id="spark-gen-now" class="text-teal-300 font-bold">--</span></div>
           <canvas id="spark-gen" width="420" height="56" class="w-full h-14"></canvas>
         </div>
-        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20">
+        <div class="bg-slate-900/90 p-2 rounded border border-emerald-500/20 h-full">
           <div class="flex justify-between text-[9px] text-slate-400 mb-1"><span>PROMPT EVAL tk/s — LIVE</span><span id="spark-prompt-now" class="text-cyan-300 font-bold">--</span></div>
           <canvas id="spark-prompt" width="420" height="56" class="w-full h-14"></canvas>
         </div>
       </div>
 
       <!-- MODEL SPEC (links) + VRAM/OFFLOAD + AI-SERVER SYSTEM (rechts, nebeneinander) — gleich hohe Kacheln -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-3">
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
         <!-- MODEL SPEC — Arch/DNA des aktiven Modells (ollama show). IMMER sichtbar → reserviert Platz, kein Layout-Jump wenn befüllt. -->
-        <div id="spec-block" class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5">
+        <div id="spec-block" class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full">
           <div class="flex justify-between items-center mb-1.5 gap-2">
             <span class="text-[9px] font-bold tracking-widest text-teal-300/90 shrink-0">MODEL SPEC <span id="spec-src" class="bg-teal-950 text-teal-300 px-1.5 py-0.5 rounded border border-teal-500/50 ml-1">--</span></span>
             <span id="spec-caps" class="text-[9px] text-slate-400 truncate text-right"></span>
@@ -172,7 +172,7 @@
           </div>
         </div>
         <!-- VRAM FOOTPRINT + GPU OFFLOAD -->
-        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5 flex flex-col">
+        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full">
           <div class="text-[10px] text-slate-400">VRAM FOOTPRINT</div>
           <div class="text-2xl font-black text-teal-300 glow-core whitespace-nowrap mt-1" id="core-vram">--</div>
           <div class="flex items-center justify-between gap-2 mt-auto pt-2">
@@ -184,20 +184,22 @@
           </div>
         </div>
         <!-- AI-Server System (CPU/RAM) — gleiche Metrik-Symbole wie GPU-Tile: Tacho (CPU) + 3D-Quader (RAM) -->
-        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2.5 flex flex-col" id="sys-wrap">
+        <div class="bg-slate-950/80 border border-teal-500/25 rounded p-2 flex flex-col h-full" id="sys-wrap">
           <div class="text-[9px] text-slate-400 tracking-wider mb-1.5">AI-SERVER SYSTEM</div>
-          <div class="flex items-center gap-1.5 min-w-0">
-            <canvas id="sys-i-cpu" class="w-8 h-[56px] shrink-0"></canvas>
-            <div class="flex flex-col min-w-0 leading-none">
-              <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">CPU</div>
-              <div id="sys-cpu" class="font-black text-teal-300 text-base sm:text-xl">--%</div>
+          <div class="flex items-center gap-3 min-w-0">
+            <div class="flex items-center gap-1.5 min-w-0">
+              <canvas id="sys-i-cpu" class="w-8 h-[52px] shrink-0"></canvas>
+              <div class="flex flex-col min-w-0 leading-none">
+                <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">CPU</div>
+                <div id="sys-cpu" class="font-black text-teal-300 text-base sm:text-lg">--%</div>
+              </div>
             </div>
-          </div>
-          <div class="flex items-center gap-1.5 min-w-0 mt-2">
-            <canvas id="sys-i-ram" class="w-8 h-[56px] shrink-0"></canvas>
-            <div class="flex flex-col min-w-0 leading-none">
-              <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">RAM</div>
-              <div id="sys-ram" class="font-black text-cyan-300 text-base sm:text-xl">--%</div>
+            <div class="flex items-center gap-1.5 min-w-0">
+              <canvas id="sys-i-ram" class="w-8 h-[52px] shrink-0"></canvas>
+              <div class="flex flex-col min-w-0 leading-none">
+                <div class="text-[9px] text-slate-400 tracking-wider mb-0.5">RAM</div>
+                <div id="sys-ram" class="font-black text-cyan-300 text-base sm:text-lg">--%</div>
+              </div>
             </div>
           </div>
           <div id="sys-cap" class="text-[8px] text-slate-500 mt-auto pt-2">--</div>
@@ -211,9 +213,9 @@
     </div>
 
     <!-- RIGHT CORTEX // GPU 1 -->
-    <div id="panel-gpu1" class="draggable-card col-span-6 lg:col-span-3 cyber-card-emerald p-2.5 sm:p-5 rounded-lg space-y-2 sm:space-y-3 pointer-events-auto flex flex-col">
+    <div id="panel-gpu1" class="draggable-card col-span-6 lg:col-span-3 cyber-card-emerald p-3 sm:p-4 rounded-lg space-y-2 pointer-events-auto flex flex-col">
       <div class="flex justify-between items-center border-b border-emerald-500/30 pb-2">
-        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-emerald-400">RIGHT CORTEX // GPU 1</span></span>
+        <span class="flex items-center gap-1.5"><span data-handle class="cursor-grab active:cursor-grabbing text-slate-600 hover:text-emerald-300 select-none" title="Ziehen zum Verschieben · Doppelklick = Standard-Layout">⠿</span><span class="text-xs font-bold text-cyan-400">RIGHT CORTEX // GPU 1</span></span>
         <span class="text-[10px] bg-emerald-950 text-emerald-300 px-2 py-0.5 rounded border border-emerald-500/50" id="gpu1-name">RTX 5060 Ti</span>
       </div>
       <!-- 4 Icons (Cyberpunk): LOAD=Tacho / VRAM=3D-Quader / TEMP=Thermometer / POWER=Energiezelle — Wert groß rechts neben dem Symbol -->
