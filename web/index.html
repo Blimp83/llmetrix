@@ -1228,6 +1228,8 @@
       const box = $('log-tabs');
       const names = targetList.length ? targetList : ['dual'];
       if (!names.includes(logTab)) logTab = names[0];
+      if (box.dataset.names === names.join(',')) { setLogTabStyle(); return; }   // nicht jeden Poll neu bauen
+      box.dataset.names = names.join(',');
       box.innerHTML = names.map(n =>
         `<button onclick="switchLogTab('${n}')" id="logtab-${n}" class="px-2 py-0.5 text-[10px] border rounded">${n.toUpperCase()}</button>`
       ).join('');

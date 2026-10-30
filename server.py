@@ -260,11 +260,13 @@ def _openai_one(name):
             info["online"] = True
         else:
             info["error"] = str(e)
+            _activity(name, info)
             return name, info
     try:
         m = scrape_metrics(t["url"], t["key"])
     except Exception as e:
         info["metrics_error"] = str(e)
+        _activity(name, info)
         return name, info
     model = health.get("model") if isinstance(health, dict) else None
     model = model or next((l.get("model_name") for l, _ in m.get("vllm:num_requests_running", [])), None)
@@ -529,43 +531,47 @@ def build_metrics():
 # Frontend kann beide Quellen im selben Panel zeigen.
 _ACTIVITY = {}
 _PREV = {}
+_ACT_LOCK = threading.Lock()
 ACTIVITY_MAX = 100
 
 
 def _activity(name, info):
-    deq = _ACTIVITY.setdefault(name, deque(maxlen=ACTIVITY_MAX))
-    prev = _PREV.get(name)
-    snap = {k: info.get(k) for k in ("state", "running", "waiting", "online", "error")}
-    snap["draft"] = (info.get("mtp") or {}).get("draft_tokens")
-    if prev is None:
-        _PREV[name] = snap
-        return
-    now = time.time()
-    def emit(line, kind="info"):
-        deq.append({"ts": now, "line": line, "kind": kind})
-    if snap["error"] and snap["error"] != prev.get("error"):
-        emit(f"ERROR: {snap['error']}", "error")
-    elif snap["online"] and not prev.get("online"):
-        emit(f"{name}: online ({info.get('model') or '?'})", "ok")
-    elif prev.get("online") and not snap["online"]:
-        emit(f"{name}: offline", "warn")
-    if snap["state"] != prev.get("state"):
-        emit(f"state: {prev.get('state') or '?'} → {snap['state'] or '?'} "
-             f"(running {snap['running']}, waiting {snap['waiting']})",
-             "ok" if snap["state"] == "generating" else "info")
-    elif snap["running"] != prev.get("running") or snap["waiting"] != prev.get("waiting"):
-        emit(f"queue: running {snap['running']}, waiting {snap['waiting']}", "info")
-    m = info.get("mtp") or {}
-    d = m.get("draft_tokens") or 0
-    if prev.get("draft") is not None and d > prev.get("draft"):
-        emit(f"req fertig: decode {info.get('last_decode_tok_s')} tk/s · "
-             f"MTP acc {m.get('acc_rate')} · cache {info.get('cache_hit_pct')} %", "ok")
-    _PREV[name] = snap
-    return deq
+    with _ACT_LOCK:
+        deq = _ACTIVITY.setdefault(name, deque(maxlen=ACTIVITY_MAX))
+        prev = _PREV.get(name)
+        snap = {k: info.get(k) for k in ("state", "running", "waiting", "online", "error")}
+        snap["draft"] = (info.get("mtp") or {}).get("draft_tokens")
+        if prev is None:
+            _PREV[name] = snap
+            return
+        now = time.time()
 
+        def emit(line, kind="info"):
+            deq.append({"ts": now, "line": line, "kind": kind})
+
+        if snap["error"] and snap["error"] != prev.get("error"):
+            emit(f"ERROR: {snap['error']}", "error")
+        elif snap["online"] and not prev.get("online"):
+            emit(f"{name}: online ({info.get('model') or '?'})", "ok")
+        elif prev.get("online") and not snap["online"]:
+            emit(f"{name}: offline", "warn")
+        if snap["state"] != prev.get("state"):
+            emit(f"state: {prev.get('state') or '?'} → {snap['state'] or '?'} "
+                 f"(running {snap['running']}, waiting {snap['waiting']})",
+                 "ok" if snap["state"] == "generating" else "info")
+        elif snap["running"] != prev.get("running") or snap["waiting"] != prev.get("waiting"):
+            emit(f"queue: running {snap['running']}, waiting {snap['waiting']}", "info")
+        m = info.get("mtp") or {}
+        d = m.get("draft_tokens") or 0
+        if prev.get("draft") is not None and d > prev.get("draft"):
+            emit(f"req fertig: decode {info.get('last_decode_tok_s')} tk/s · "
+                 f"MTP acc {m.get('acc_rate')} · cache {info.get('cache_hit_pct')} %", "ok")
+        _PREV[name] = snap
 
 def get_activity(name, limit=80):
-    return {"gpu": name, "entries": list(_ACTIVITY.get(name, []))[-limit:]}
+    with _ACT_LOCK:
+        entries = list(_ACTIVITY.get(name, []))[-limit:]
+    return {"gpu": name, "entries": entries}
 
 
 def loki_query_range(query, limit=150, seconds=3600):
