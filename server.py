@@ -789,17 +789,16 @@ def get_model_info(gpu):
 
 
 # ── Inference Benchmark (echte tk/s) ──────────────────────────────────────
-def run_benchmark(target):
+def run_benchmark(target, prompt=None, max_tokens=None):
     if target in TARGETS and target_type(target) == "openai":
         t = TARGETS[target]
         inst = get_openai_cached().get(target) or {}
         model = inst.get("model") or next((x.get("name") for x in (inst.get("models") or [])), None)
         try:
             before = scrape_metrics(t["url"], t["key"])
-            # Prompt/Output über Env konfigurierbar → längerer Lauf, damit im Dashboard
-            # mehrere t/s-Punkte und eine sichtbare Aktivität entstehen (Default wie bisher).
-            bprompt = os.environ.get("LM_BENCH_PROMPT", "Count from 1 to 20.")
-            bmax = int(os.environ.get("LM_BENCH_MAX_TOKENS", "24"))
+            # Prompt/Output: Body > Env > Default. Längerer Lauf → mehrere t/s-Punkte im Dashboard.
+            bprompt = prompt or os.environ.get("LM_BENCH_PROMPT", "Count from 1 to 20.")
+            bmax = int(max_tokens or os.environ.get("LM_BENCH_MAX_TOKENS", "24"))
             payload = json.dumps({"model": model or "model", "max_tokens": bmax, "stream": False,
                                   "messages": [{"role": "user", "content": bprompt}]}).encode()
             req = urllib.request.Request(t["url"] + "/v1/chat/completions", data=payload,
@@ -954,7 +953,7 @@ class Handler(BaseHTTPRequestHandler):
         target = resolve_target(body.get("target", ""))
         if target not in TARGETS:
             return self._send(400, {"error": f"unknown target {target}"})
-        result = run_benchmark(target)
+        result = run_benchmark(target, body.get("prompt"), body.get("max_tokens"))
         code = 200 if "error" not in result else 502
         return self._send(code, result)
 
