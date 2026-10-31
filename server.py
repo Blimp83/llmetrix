@@ -660,11 +660,11 @@ def _nap_idle_seconds(s):
     return None
 
 
-def nap_get(path):
+def nap_get(path, timeout=None):
     if not NAP_URL:
         return None
     req = urllib.request.Request(NAP_URL.rstrip("/") + path, headers=auth_headers(NAP_TOKEN, "application/json"))
-    with urllib.request.urlopen(req, timeout=TIMEOUT) as r:
+    with urllib.request.urlopen(req, timeout=timeout or TIMEOUT) as r:
         return json.load(r)
 
 
@@ -679,8 +679,10 @@ def get_nap():
         cached = _NAP_CACHE
         if now - cached.get("ts", 0) < NAP_TTL and cached.get("services") is not None:
             return cached
-        services = nap_get("/v1/services") or []
-        host = nap_get("/v1/host") or {}
+        # Kurzer Timeout: ein hängender Nap-Call darf /api/metrics nicht blockieren.
+        # Bekannte Daten bleiben erhalten, der Fehler wird nur als Zusatz gemeldet.
+        services = nap_get("/v1/services", timeout=3) or cached.get("services") or []
+        host = nap_get("/v1/host", timeout=3) or cached.get("host") or {}
         # Idle-Timer: napd liefert keinen Event-Endpunkt → wir führen die Seen-Zeit pro Service
         # selbst nach. running_since ist der erste Poll, seit dem der Service läuft; idle_since der
         # erste Poll, seit dem er nicht mehr lief. Beides nur in diesem Prozess (kein Nap-Persist).
@@ -711,7 +713,7 @@ def get_nap():
         _NAP_CACHE.update({"ts": now, "services": services, "host": host, "url": NAP_URL})
         return _NAP_CACHE
     except Exception as e:
-        # Fehler nicht cachen → nächster Poll versucht erneut, aber nur, wenn noch nichts bekannt ist
+        # Einzelner Timeout → bekannte Werte behalten, Fehler nur als Statusmeldung
         if _NAP_CACHE.get("services") is not None:
             _NAP_CACHE["error"] = str(e)
             return _NAP_CACHE
